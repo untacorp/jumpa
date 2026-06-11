@@ -10,7 +10,11 @@ export default defineConfig({
   adapter: node({
     mode: 'standalone'
   }),
-  integrations: [react(), solid(), svelte()],
+  integrations: [
+    react({ include: ['**/react/**/*'] }),
+    solid({ include: ['**/solid/**/*'] }),
+    svelte()
+  ],
   server: {
     host: true,
     port: 4321

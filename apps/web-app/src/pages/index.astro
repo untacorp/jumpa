@@ -1,5 +1,8 @@
 ---
-
+import FullScreenMap from '../components/react/FullScreenMap';
+import ControlOverlay from '../components/svelte/ControlOverlay.svelte';
+import ChatDrawer from '../components/svelte/ChatDrawer.svelte';
+import '../index.css';
 ---
 
 <html lang="en">
@@ -7,11 +10,24 @@
 		<meta charset="utf-8" />
 		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 		<link rel="icon" href="/favicon.ico" />
-		<meta name="viewport" content="width=device-width" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 		<meta name="generator" content={Astro.generator} />
-		<title>Astro</title>
+		<title>Jumpa - Premium Spatial Matching</title>
+		<meta name="description" content="Wayland-grade fluid spatial matching application using high-performance WebGL maps." />
 	</head>
 	<body>
-		<h1>Astro</h1>
+		<div class="app-container">
+			<!-- Cosmic backdrop is revealed during the blackhole transition scale-down -->
+			<div class="cosmic-backdrop"></div>
+			
+			<!-- Viewport wrapper for map -->
+			<div id="map-viewport" class="map-viewport-wrapper">
+				<FullScreenMap client:only="react" />
+			</div>
+			
+			<!-- Svelte UI layers -->
+			<ControlOverlay client:only="svelte" />
+			<ChatDrawer client:only="svelte" />
+		</div>
 	</body>
 </html>
