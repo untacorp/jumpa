@@ -1,11 +1,9 @@
-version: '3.8'
-
 services:
   nginx:
     image: nginx:alpine
     ports:
-      - "80:80"
-      - "443:443"
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
     volumes:
       - ./infra/edge-routing/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./infra/edge-routing/ssl:/etc/nginx/ssl:ro
@@ -21,7 +19,7 @@ services:
       - NGROK_AUTHTOKEN=${NGROK_AUTHTOKEN}
     command: "http nginx:80"
     ports:
-      - "4040:4040"
+      - "${NGROK_PORT:-4040}:4040"
     depends_on:
       - nginx
 
@@ -32,9 +30,9 @@ services:
       - ./apps/web-app:/app
     command: "bun run dev"
     environment:
-      - PUBLIC_API_URL=http://localhost/api
+      - PUBLIC_API_URL=${PUBLIC_API_URL:-http://localhost/api}
     ports:
-      - "4321:4321"
+      - "${ASTRO_PORT:-4321}:4321"
 
   gateway-api:
     image: rust:1.85-slim
@@ -43,11 +41,11 @@ services:
       - .:/app
     command: "cargo run -p gateway-api"
     environment:
-      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/jumpa
-      - SCYLLA_URI=scylladb:9042
-      - REDIS_URL=redis://redis:6379
-      - SPATIAL_ENGINE_URL=http://spatial-compute:50051
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - DATABASE_URL=postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-jumpa}
+      - SCYLLA_URI=${SCYLLA_URI:-scylladb:9042}
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - SPATIAL_ENGINE_URL=${SPATIAL_ENGINE_URL:-http://spatial-compute:50051}
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
     depends_on:
       - postgres
       - scylladb
@@ -61,16 +59,16 @@ services:
       - .:/app
     command: "cargo run -p spatial-compute"
     environment:
-      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
 
   postgres:
     image: postgis/postgis:16-3.4-alpine
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=jumpa
+      - POSTGRES_USER=${DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+      - POSTGRES_DB=${DB_NAME:-jumpa}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
 
@@ -78,33 +76,33 @@ services:
     image: scylladb/scylla:latest
     command: --smp 1 --memory 1G --developer-mode 1
     ports:
-      - "9042:9042"
+      - "${SCYLLA_PORT:-9042}:9042"
     volumes:
       - scylla-data:/var/lib/scylla
 
   redis:
     image: redis:alpine
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
 
   minio:
-    image: minio/minio
+    image: minio/minio:latest
     command: server /data --console-address ":9001"
     environment:
-      - MINIO_ROOT_USER=admin
-      - MINIO_ROOT_PASSWORD=password
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-admin}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-password}
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
     volumes:
       - minio-data:/data
 
   martin:
     image: maplibre/martin
     environment:
-      - DATABASE_URL=postgres://postgres:postgres@postgres:5432/jumpa
+      - DATABASE_URL=postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-jumpa}
     ports:
-      - "3000:3000"
+      - "${MARTIN_PORT:-3000}:3000"
     depends_on:
       - postgres
 
@@ -135,7 +133,7 @@ services:
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
       - GF_AUTH_DISABLE_LOGIN_FORM=true
     ports:
-      - "3001:3000"
+      - "${GRAFANA_PORT:-3001}:3000"
     volumes:
       - ./infra/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
     depends_on:
