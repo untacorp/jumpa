@@ -33,7 +33,7 @@
   }
 </script>
 
-<div class="absolute inset-0 z-20 pointer-events-none flex flex-col justify-between p-6">
+<div class="absolute inset-0 z-20 pointer-events-none flex flex-col justify-between p-4 md:p-6">
   
   <!-- Top Bar: App Title and Status -->
   <div class="flex justify-between items-center pointer-events-auto">
@@ -46,7 +46,7 @@
   </div>
 
   <!-- Bottom Area: Venue Browser & Chat FAB -->
-  <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 w-full pointer-events-auto">
+  <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-4 w-full pointer-events-auto relative">
     <VenuePanel
       venuesList={$venues}
       selectedVenue={$selectedVenue}
@@ -54,6 +54,8 @@
       onVenueClick={handleVenueClick}
       onStartSession={handleStartSession}
     />
-    <ChatFAB isChatOpen={$isChatOpen} />
+    <div class="absolute bottom-[240px] right-0 z-30 md:relative md:bottom-auto md:right-auto">
+      <ChatFAB isChatOpen={$isChatOpen} />
+    </div>
   </div>
 </div>

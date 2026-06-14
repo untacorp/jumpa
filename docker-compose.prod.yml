@@ -73,7 +73,7 @@ services:
       - minio-data:/data
 
   martin:
-    image: maplibre/martin
+    image: ghcr.io/maplibre/martin:v0.15.0
     restart: always
     environment:
       - DATABASE_URL=postgres://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}

@@ -77,10 +77,10 @@
   }
 </script>
 
-<div bind:this={chatContainerEl} class="fixed inset-0 z-30 pointer-events-none flex items-center justify-end p-6">
-  <!-- Floating Glassmorphic Chat Panel -->
+<div bind:this={chatContainerEl} class="fixed inset-0 z-30 pointer-events-none flex items-center justify-end p-0 md:p-6">
+  <!-- Floating Glassmorphic Chat Panel: Fullscreen on mobile, rounded floating panel on desktop -->
   <div
-    class="pointer-events-auto flex flex-col w-full max-w-[400px] h-[calc(100vh-48px)] rounded-[40px] border border-white/8 bg-white/3 backdrop-blur-3xl p-6 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.05)] transition-all duration-500 ease-out"
+    class="pointer-events-auto flex flex-col w-full h-full md:h-[calc(100vh-48px)] md:max-w-[400px] rounded-none md:rounded-[40px] border-b md:border border-white/8 bg-white/3 backdrop-blur-3xl p-4 md:p-6 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.8),inset_0_1px_1px_rgba(255,255,255,0.05)] transition-all duration-500 ease-out"
     style="
       transform: {$isChatOpen ? 'scale(1)' : 'scale(0)'};
       opacity: {$isChatOpen ? '1' : '0'};

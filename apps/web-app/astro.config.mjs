@@ -1,7 +1,6 @@
 import { defineConfig } from 'astro/config';
 import node from '@astrojs/node';
 import react from '@astrojs/react';
-import solid from '@astrojs/solid-js';
 import svelte from '@astrojs/svelte';
 import tailwindcss from '@tailwindcss/vite';
 
@@ -13,7 +12,6 @@ export default defineConfig({
   }),
   integrations: [
     react({ include: ['**/react/**/*'] }),
-    solid({ include: ['**/solid/**/*'] }),
     svelte()
   ],
   server: {
@@ -24,6 +22,19 @@ export default defineConfig({
     plugins: [tailwindcss()],
     server: {
       allowedHosts: ['web-app', 'localhost', '127.0.0.1']
+    },
+    resolve: {
+      dedupe: ['react', 'react-dom']
+    },
+    optimizeDeps: {
+      include: [
+        'react',
+        'react-dom',
+        'react-dom/client'
+      ],
+      exclude: [
+        'svelte'
+      ]
     }
   }
 });
