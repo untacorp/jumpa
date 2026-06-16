@@ -2,7 +2,7 @@ import { atom } from 'nanostores';
 import type { Venue, JumpaSession, SessionStatus } from '../types';
 
 // Global state atoms (No $ prefix to avoid Svelte syntax errors)
-export const mapCenter = atom<readonly [number, number]>([106.8272, -6.1751]); // Default to Central Jakarta (Monas)
+export const mapCenter = atom<readonly [number, number]>([115.1800, -8.6700]); // Default to South Bali (Denpasar/Seminyak) for POI testing
 export const mapZoom = atom<number>(12);
 export const isChatOpen = atom<boolean>(false);
 export const blackholeOrigin = atom<{ x: number; y: number }>({ x: 0, y: 0 });

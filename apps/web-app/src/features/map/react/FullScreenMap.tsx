@@ -1,9 +1,11 @@
 /** @jsxImportSource react */
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
+import { MaplibreStarfieldLayer } from '@geoql/maplibre-gl-starfield';
 import { useStore } from '@nanostores/react';
 import type { Feature, LineString } from 'geojson';
 import 'maplibre-gl/dist/maplibre-gl.css';
+
 
 import {
   mapCenter,
@@ -16,8 +18,10 @@ import {
 } from '@/store/mapStore';
 import type { Venue } from '@/types';
 
+
+
 // Helper to register custom beautiful Phosphor SVG icons to Maplibre
-const registerMapIcons = (map: maplibregl.Map) => {
+const registerMapIcons = (map: maplibregl.Map, callback: () => void) => {
   const colors = {
     colorFood: '#f59e0b',
     colorTransit: '#3b82f6',
@@ -67,7 +71,11 @@ const registerMapIcons = (map: maplibregl.Map) => {
     }
   };
 
-  Object.entries(iconSVGs).forEach(([id, { color, path }]) => {
+  const entries = Object.entries(iconSVGs);
+  const total = entries.length;
+  let loadedCount = 0;
+
+  entries.forEach(([id, { color, path }]) => {
     const svgString = `
       <svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36">
         <circle cx="18" cy="18" r="16" fill="rgba(255, 255, 255, 0.4)" stroke="${colors.strokeColor}" stroke-width="1.5" />
@@ -85,18 +93,445 @@ const registerMapIcons = (map: maplibregl.Map) => {
         map.removeImage(id);
       }
       map.addImage(id, img);
+      loadedCount++;
+      if (loadedCount === total) {
+        callback();
+      }
+    };
+    img.onerror = () => {
+      loadedCount++;
+      if (loadedCount === total) {
+        callback();
+      }
     };
   });
 };
+
+// Helper to get category glow colors
+function getCategoryColor(category: string): string {
+  const c = category.toLowerCase();
+  if (['coffee_shop', 'cafe', 'restaurant', 'indonesian_restaurant', 'asian_restaurant', 
+       'chinese_restaurant', 'noodles_restaurant', 'fast_food_restaurant', 'chicken_restaurant', 
+       'japanese_restaurant', 'bakery', 'food_court', 'dessert_shop', 'ice_cream_parlor', 
+       'tea_room', 'juice_bar', 'food_truck'].includes(c)) {
+    return '#f59e0b'; // Amber for Food
+  }
+  if (['hotel', 'accommodation', 'hostel', 'resort', 'airport', 'train_station', 
+       'metro_station', 'bus_station', 'bus_stop', 'shopping_center', 'shopping_mall', 
+       'department_store', 'landmark_and_historical_building'].includes(c)) {
+    return '#3b82f6'; // Blue for Transit/Shopping
+  }
+  if (['park', 'tourist_attraction', 'plaza', 'scenic_lookout'].includes(c)) {
+    return '#10b981'; // Green for Nature
+  }
+  if (['art_gallery', 'museum', 'theater', 'cinema', 'music_venue', 'cultural_center', 
+       'arts_and_entertainment', 'sports_club', 'stadium', 'sports_complex', 'playground', 
+       'gym_fitness_center', 'recreation_center'].includes(c)) {
+    return '#06b6d4'; // Cyan for Arts/Sports
+  }
+  if (['mosque', 'church_cathedral', 'temple', 'community_center', 'library', 'school', 
+       'education', 'college_university', 'elementary_school', 'high_school'].includes(c)) {
+    return '#a855f7'; // Purple for Community/Education
+  }
+  return '#64748b'; // Slate default
+}
+
+/// Helper functions for color interpolation supporting alpha transparency
+function hexToRgb(hex: string) {
+  const cleanHex = hex.replace('#', '');
+  const isAlpha = cleanHex.length === 8;
+  const bigint = parseInt(cleanHex, 16);
+  if (isAlpha) {
+    const r = (bigint >> 24) & 255;
+    const g = (bigint >> 16) & 255;
+    const b = (bigint >> 8) & 255;
+    const a = (bigint & 255) / 255;
+    return { r, g, b, a };
+  } else {
+    const r = (bigint >> 16) & 255;
+    const g = (bigint >> 8) & 255;
+    const b = bigint & 255;
+    return { r, g, b, a: 1.0 };
+  }
+}
+
+function rgbToHex(r: number, g: number, b: number, a: number = 1.0) {
+  const clamp = (val: number) => Math.max(0, Math.min(255, Math.round(val)));
+  if (a < 1.0) {
+    return `rgba(${clamp(r)}, ${clamp(g)}, ${clamp(b)}, ${a.toFixed(3)})`;
+  }
+  return '#' + ((1 << 24) + (clamp(r) << 16) + (clamp(g) << 8) + clamp(b)).toString(16).slice(1);
+}
+
+function interpolateColor(color1: string, color2: string, factor: number): string {
+  try {
+    const c1 = hexToRgb(color1);
+    const c2 = hexToRgb(color2);
+    const r = c1.r + factor * (c2.r - c1.r);
+    const g = c1.g + factor * (c2.g - c1.g);
+    const b = c1.b + factor * (c2.b - c1.b);
+    const a = c1.a + factor * (c2.a - c1.a);
+    return rgbToHex(r, g, b, a);
+  } catch (e) {
+    return color1;
+  }
+}
+
+interface ThemeKeyframe {
+  hour: number;
+  skyColor: string;
+  horizonColor: string;
+  fogColor: string;
+  lightColor: string;
+  lightIntensity: number;
+  lightPosition: [number, number, number];
+  earthColor: string;
+  waterColor: string;
+  parkColor: string;
+  landuseColor: string;
+  buildingColor: string;
+  labelTextColor: string;
+  labelTextHaloColor: string;
+  motorwayColor: string;
+  motorwayCasing: string;
+  midRoadColor: string;
+  midRoadCasing: string;
+  localRoadColor: string;
+  localRoadCasing: string;
+}
+
+// Apply theme dynamically to map style properties and layers (runs at 60fps directly on the GPU without style reload)
+function applyThemeForHour(map: maplibregl.Map, hour: number) {
+  const isNight = hour >= 20 || hour < 5;
+
+  const keyframes: ThemeKeyframe[] = [
+    {
+      hour: 0,
+      skyColor: '#0a0015',
+      horizonColor: '#1a0633',
+      fogColor: '#05010d',
+      lightColor: '#a5f3fc',
+      lightIntensity: 0.35,
+      lightPosition: [1.15, 210, 30],
+      earthColor: '#0b0f19',
+      waterColor: '#1e293b',
+      parkColor: '#0e1b18',
+      landuseColor: '#131a2c',
+      buildingColor: '#0f1422',
+      labelTextColor: '#cbd5e1',
+      labelTextHaloColor: '#0b0f19',
+      motorwayColor: '#475569',
+      motorwayCasing: '#1e293b',
+      midRoadColor: '#1e293b',
+      midRoadCasing: '#0f172a',
+      localRoadColor: '#0f172a',
+      localRoadCasing: '#020617',
+    },
+    {
+      hour: 6,
+      skyColor: '#fca5a5',
+      horizonColor: '#fef08a',
+      fogColor: '#fed7aa',
+      lightColor: '#ffedd5',
+      lightIntensity: 0.75,
+      lightPosition: [1.5, 75, 70],
+      earthColor: '#fdf8f5',
+      waterColor: '#9ec5db',
+      parkColor: '#e5ebd8',
+      landuseColor: '#f5efe9',
+      buildingColor: '#f3eae5',
+      labelTextColor: '#1e293b',
+      labelTextHaloColor: '#ffffff',
+      motorwayColor: '#cbd5e1',
+      motorwayCasing: '#94a3b8',
+      midRoadColor: '#f1f3f5',
+      midRoadCasing: '#cbd5e1',
+      localRoadColor: '#f5f5f7',
+      localRoadCasing: '#cbd5e1',
+    },
+    {
+      hour: 12,
+      skyColor: '#a2c2e8',
+      horizonColor: '#fdfbf7',
+      fogColor: '#cbd5e1',
+      lightColor: '#ffead4',
+      lightIntensity: 0.65,
+      lightPosition: [1.35, 220, 55],
+      earthColor: '#f5f3ef',
+      waterColor: '#b4ccd9',
+      parkColor: '#dbe2d2',
+      landuseColor: '#eceae4',
+      buildingColor: '#eae6e0',
+      labelTextColor: '#1e293b',
+      labelTextHaloColor: '#ffffff',
+      motorwayColor: '#a2b0b3',
+      motorwayCasing: '#78909c',
+      midRoadColor: '#cbd5e1',
+      midRoadCasing: '#94a3b8',
+      localRoadColor: '#f1f3f5',
+      localRoadCasing: '#cbd5e1',
+    },
+    {
+      hour: 18,
+      skyColor: '#7c3aed',
+      horizonColor: '#f97316',
+      fogColor: '#fca5a5',
+      lightColor: '#ff8c42',
+      lightIntensity: 0.7,
+      lightPosition: [1.5, 255, 65],
+      earthColor: '#f1eae2',
+      waterColor: '#99b8cc',
+      parkColor: '#d8d5c5',
+      landuseColor: '#e6dcd0',
+      buildingColor: '#e5dbcf',
+      labelTextColor: '#1e293b',
+      labelTextHaloColor: '#ffffff',
+      motorwayColor: '#cbd5e1',
+      motorwayCasing: '#94a3b8',
+      midRoadColor: '#e2e8f0',
+      midRoadCasing: '#cbd5e1',
+      localRoadColor: '#f5f5f7',
+      localRoadCasing: '#e2e8f0',
+    },
+    {
+      hour: 24, // Wrap around to midnight
+      skyColor: '#0a0015',
+      horizonColor: '#1a0633',
+      fogColor: '#05010d',
+      lightColor: '#a5f3fc',
+      lightIntensity: 0.35,
+      lightPosition: [1.15, 210, 30],
+      earthColor: '#0b0f19',
+      waterColor: '#1e293b',
+      parkColor: '#0e1b18',
+      landuseColor: '#131a2c',
+      buildingColor: '#0f1422',
+      labelTextColor: '#cbd5e1',
+      labelTextHaloColor: '#0b0f19',
+      motorwayColor: '#475569',
+      motorwayCasing: '#1e293b',
+      midRoadColor: '#1e293b',
+      midRoadCasing: '#0f172a',
+      localRoadColor: '#0f172a',
+      localRoadCasing: '#020617',
+    }
+  ];
+
+  // Find the two keyframes to interpolate between
+  let k1 = keyframes[0];
+  let k2 = keyframes[1];
+  for (let i = 0; i < keyframes.length - 1; i++) {
+    if (hour >= keyframes[i].hour && hour <= keyframes[i + 1].hour) {
+      k1 = keyframes[i];
+      k2 = keyframes[i + 1];
+      break;
+    }
+  }
+
+  const factor = (hour - k1.hour) / (k2.hour - k1.hour);
+
+  // Helper to interpolate numeric properties
+  const interpNum = (n1: number, n2: number) => n1 + factor * (n2 - n1);
+  
+  // Helper to interpolate position arrays
+  const interpPos = (p1: [number, number, number], p2: [number, number, number]): [number, number, number] => [
+    p1[0] + factor * (p2[0] - p1[0]),
+    p1[1] + factor * (p2[1] - p1[1]),
+    p1[2] + factor * (p2[2] - p1[2]),
+  ];
+
+  const skyColor = interpolateColor(k1.skyColor, k2.skyColor, factor);
+  const horizonColor = interpolateColor(k1.horizonColor, k2.horizonColor, factor);
+  const fogColor = interpolateColor(k1.fogColor, k2.fogColor, factor);
+  const lightColor = interpolateColor(k1.lightColor, k2.lightColor, factor);
+  const lightIntensity = interpNum(k1.lightIntensity, k2.lightIntensity);
+  const lightPosition = interpPos(k1.lightPosition, k2.lightPosition);
+
+  const earthColor = interpolateColor(k1.earthColor, k2.earthColor, factor);
+  const waterColor = interpolateColor(k1.waterColor, k2.waterColor, factor);
+  const parkColor = interpolateColor(k1.parkColor, k2.parkColor, factor);
+  const landuseColor = interpolateColor(k1.landuseColor, k2.landuseColor, factor);
+  const buildingColor = interpolateColor(k1.buildingColor, k2.buildingColor, factor);
+  const labelTextColor = interpolateColor(k1.labelTextColor, k2.labelTextColor, factor);
+  const labelTextHaloColor = interpolateColor(k1.labelTextHaloColor, k2.labelTextHaloColor, factor);
+
+  const motorwayColor = interpolateColor(k1.motorwayColor, k2.motorwayColor, factor);
+  const motorwayCasing = interpolateColor(k1.motorwayCasing, k2.motorwayCasing, factor);
+  const midRoadColor = interpolateColor(k1.midRoadColor, k2.midRoadColor, factor);
+  const midRoadCasing = interpolateColor(k1.midRoadCasing, k2.midRoadCasing, factor);
+  const localRoadColor = interpolateColor(k1.localRoadColor, k2.localRoadColor, factor);
+  const localRoadCasing = interpolateColor(k1.localRoadCasing, k2.localRoadCasing, factor);
+
+  // Apply sky shader settings dynamically with atmosphere halo for globe
+  try {
+    if (typeof map.setSky === 'function') {
+      map.setSky({
+        'sky-color': skyColor,
+        'sky-horizon-blend': isNight ? 0.35 : 0.55,
+        'horizon-color': horizonColor,
+        'horizon-fog-blend': isNight ? 0.3 : 0.5,
+        'fog-color': fogColor,
+        'fog-ground-blend': isNight ? 0.4 : 0.6,
+        'atmosphere-blend': isNight ? 0.95 : 0.75
+      });
+    }
+  } catch (e) {
+    console.warn('setSky is not supported or failed:', e);
+  }
+
+  // Apply dynamic viewport light positions and colors for photorealistic shading
+  try {
+    if (typeof map.setLight === 'function') {
+      map.setLight({
+        'anchor': 'viewport',
+        'color': lightColor,
+        'intensity': lightIntensity,
+        'position': lightPosition
+      });
+    }
+  } catch (e) {
+    console.warn('setLight is not supported or failed:', e);
+  }
+
+  // Apply fog settings dynamically
+  try {
+    if (typeof map.setFog === 'function') {
+      map.setFog({
+        'range': [0.5, 12],
+        'color': fogColor,
+        'horizon-blend': 0.3,
+        'star-intensity': isNight ? 0.85 : 0.0
+      });
+    }
+  } catch (e) {
+    console.warn('setFog is not supported or failed:', e);
+  }
+
+  // Loop through and update individual style layers via hardware-accelerated paint properties
+  try {
+    const style = map.getStyle();
+    if (style && style.layers) {
+      style.layers.forEach((layer: any) => {
+        if (layer.id === 'background') {
+          map.setPaintProperty(layer.id, 'background-color', [
+            'interpolate', ['linear'], ['zoom'],
+            3, '#02040a',
+            5, earthColor
+          ]);
+        } else if (layer.id === 'earth') {
+          map.setPaintProperty(layer.id, 'fill-color', earthColor);
+        }
+        if (layer.id.includes('water')) {
+          if (layer.type === 'fill') {
+            map.setPaintProperty(layer.id, 'fill-color', waterColor);
+          } else if (layer.type === 'line') {
+            map.setPaintProperty(layer.id, 'line-color', waterColor);
+          }
+        }
+
+        // Customize green landcover / park areas
+        const isGreenArea = layer.id === 'park' || 
+                            layer.id.includes('landcover_grass') || 
+                            layer.id.includes('landcover_wood') ||
+                            layer.id === 'landuse_pitch' ||
+                            layer.id === 'landuse_track' ||
+                            layer.id === 'landuse_cemetery';
+        if (isGreenArea && layer.type === 'fill') {
+          map.setPaintProperty(layer.id, 'fill-color', parkColor);
+        }
+
+        // Customize school, hospital, residential, airport and cemetery fill areas
+        const isMutedArea = layer.id === 'landuse_residential' ||
+                            layer.id === 'landuse_hospital' ||
+                            layer.id === 'landuse_school' ||
+                            layer.id === 'aeroway_fill';
+        if (isMutedArea && layer.type === 'fill') {
+          map.setPaintProperty(layer.id, 'fill-color', landuseColor);
+        }
+
+        // Customize roads
+        const isRoad = layer.id.includes('road') || 
+                       layer.id.includes('highway') || 
+                       layer.id.includes('street') || 
+                       layer.id.includes('path') || 
+                       layer.id.includes('link') ||
+                       layer.id.includes('motorway') ||
+                       layer.id.includes('trunk') ||
+                       layer.id.includes('primary') ||
+                       layer.id.includes('secondary') ||
+                       layer.id.includes('tertiary') ||
+                       layer.id.includes('minor') ||
+                       layer.id.includes('service') ||
+                       (layer['source-layer'] === 'transportation') ||
+                       (layer.sourceLayer === 'transportation');
+        if (isRoad && layer.type === 'line') {
+          if (layer.id.includes('casing')) {
+            if (layer.id.includes('motorway') || layer.id.includes('trunk')) {
+              map.setPaintProperty(layer.id, 'line-color', motorwayCasing);
+            } else if (layer.id.includes('primary') || layer.id.includes('secondary') || layer.id.includes('tertiary')) {
+              map.setPaintProperty(layer.id, 'line-color', midRoadCasing);
+            } else {
+              map.setPaintProperty(layer.id, 'line-color', localRoadCasing);
+            }
+          } else {
+            if (layer.id.includes('motorway') || layer.id.includes('trunk')) {
+              map.setPaintProperty(layer.id, 'line-color', motorwayColor);
+            } else if (layer.id.includes('primary') || layer.id.includes('secondary') || layer.id.includes('tertiary')) {
+              map.setPaintProperty(layer.id, 'line-color', midRoadColor);
+            } else {
+              map.setPaintProperty(layer.id, 'line-color', localRoadColor);
+            }
+          }
+        }
+
+        // Customize 2D & 3D buildings color to make them translucent, soft glass footprints
+        if (layer.id === 'building-3d' || layer.id === 'building') {
+          if (layer.type === 'fill-extrusion') {
+            map.setPaintProperty(layer.id, 'fill-extrusion-color', buildingColor);
+            map.setPaintProperty(layer.id, 'fill-extrusion-opacity', isNight ? 0.45 : 0.55);
+          } else if (layer.type === 'fill') {
+            map.setPaintProperty(layer.id, 'fill-color', buildingColor);
+            try {
+              map.setPaintProperty(layer.id, 'fill-opacity', isNight ? 0.35 : 0.45);
+            } catch (e) {}
+          }
+        }
+
+        // Customize text labels (countries, cities, districts, streets) for high dark-mode readability
+        if (layer.type === 'symbol') {
+          const isBasemapLabel = layer.id !== 'foursquare-places-layer';
+          if (isBasemapLabel) {
+            try {
+              map.setPaintProperty(layer.id, 'text-color', labelTextColor);
+              map.setPaintProperty(layer.id, 'text-halo-color', labelTextHaloColor);
+              map.setPaintProperty(layer.id, 'text-halo-width', 1.5);
+            } catch (e) {}
+          }
+        }
+      });
+    }
+
+    // Dynamic Foursquare labels halo color to match theme backdrops
+    if (map.getLayer('foursquare-places-layer')) {
+      map.setPaintProperty('foursquare-places-layer', 'text-halo-color', labelTextHaloColor);
+    }
+  } catch (err) {
+    console.error('Error applying dynamic style paint properties:', err);
+  }
+}
 
 // Custom DOM Marker creator helper for Venues
 function createMarkerElement(venue: Venue, isSelected: boolean, onClick: () => void) {
   const el = document.createElement('div');
   el.className = `custom-marker ${isSelected ? 'selected' : ''}`;
+  
+  // Set custom category color for neon glows
+  const glowColor = getCategoryColor(venue.category);
+  el.style.setProperty('--category-glow-color', glowColor);
 
   el.innerHTML = `
     <div class="custom-marker-ring"></div>
-    <div class="custom-marker-icon">
+    <div class="custom-marker-icon" style="color: ${glowColor}; border-color: ${glowColor};">
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2.5" stroke="currentColor" style="width: 16px; height: 16px;">
         <path stroke-linecap="round" stroke-linejoin="round" d="M15 10.5a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
         <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1 1 15 0Z" />
@@ -124,6 +559,7 @@ export default function FullScreenMap() {
   const mapRef = useRef<maplibregl.Map | null>(null);
   const markersRef = useRef<{ [key: string]: maplibregl.Marker }>({});
   const userMarkerRef = useRef<maplibregl.Marker | null>(null);
+  const starfieldRef = useRef<MaplibreStarfieldLayer | null>(null);
 
   const center = useStore(mapCenter);
   const zoom = useStore(mapZoom);
@@ -132,6 +568,25 @@ export default function FullScreenMap() {
   const currentActiveSession = useStore(activeSession);
   const currentUserLocation = useStore(userLocation);
 
+  const [currentHour, setCurrentHour] = useState<number>(new Date().getHours());
+
+  // Sync style with currentHour changes using ultra-fast paint property updates (runs smoothly at 60fps directly on the GPU)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !map.isStyleLoaded()) return;
+
+    applyThemeForHour(map, currentHour);
+
+
+    // Also sync the global HTML document theme attribute
+    let activeTheme = 'day';
+    if (currentHour >= 20 || currentHour < 5) activeTheme = 'night';
+    else if (currentHour >= 5 && currentHour < 8) activeTheme = 'sunrise';
+    else if (currentHour >= 8 && currentHour < 17) activeTheme = 'day';
+    else activeTheme = 'sunset';
+    document.documentElement.setAttribute('data-theme', activeTheme);
+  }, [currentHour]);
+
   // 1. Initialize Map instance
   useEffect(() => {
     if (!mapContainerRef.current) return;
@@ -139,11 +594,13 @@ export default function FullScreenMap() {
     const map = new maplibregl.Map({
       container: mapContainerRef.current,
       style: 'https://tiles.openfreemap.org/styles/liberty',
+      validate: false, // Disable strict validation to allow experimental sky/fog properties
       center: [...center],
       zoom: zoom,
+      minZoom: 1.5,
       pitch: 45,
       bearing: -10,
-      maxPitch: 75,
+      maxPitch: 70,
       pitchWithRotate: true,
       dragRotate: true,
       touchZoomRotate: true,
@@ -152,296 +609,257 @@ export default function FullScreenMap() {
 
     mapRef.current = map;
 
-    // Force Globe projection once the style is loaded for Mapbox GL feel
-    map.on('style.load', () => {
-      // Register custom phosphor icons to map
-      registerMapIcons(map);
-
-      try {
-        if (typeof map.setProjection === 'function') {
-          map.setProjection({ type: 'globe' });
-        }
-      } catch (err) {
-        console.warn('Globe projection not supported on this maplibre version/environment:', err);
-      }
-
-      // Customize road colors to green for a premium custom map aesthetic
-      try {
-        const layers = map.getStyle().layers;
-        if (layers) {
-          layers.forEach((layer) => {
-            const isRoad = layer.id.includes('road') || 
-                           layer.id.includes('highway') || 
-                           layer.id.includes('street') || 
-                           layer.id.includes('path') || 
-                           layer.id.includes('link');
-            if (isRoad && layer.type === 'line') {
-              if (layer.id.includes('casing')) {
-                map.setPaintProperty(layer.id, 'line-color', '#15803d'); // Dark green casing
-              } else if (layer.id.includes('motorway') || layer.id.includes('trunk') || layer.id.includes('primary')) {
-                map.setPaintProperty(layer.id, 'line-color', '#22c55e'); // Vibrant green for major roads
-              } else {
-                map.setPaintProperty(layer.id, 'line-color', '#86efac'); // Light green for minor roads
-              }
-            }
-          });
-        }
-      } catch (err) {
-        console.warn('Error custom styling road layers:', err);
-      }
-
-      // Remove default map POIs to avoid overlap with Foursquare places
-      try {
-        const layers = map.getStyle().layers;
-        if (layers) {
-          layers.forEach((layer) => {
-            const isPoi = layer.id.includes('poi') || 
-                          (layer['source-layer'] && layer['source-layer'].includes('poi')) ||
-                          (layer.sourceLayer && layer.sourceLayer.includes('poi'));
-            if (isPoi) {
-              map.removeLayer(layer.id);
-            }
-          });
-        }
-      } catch (err) {
-        console.warn('Error removing default POI layers:', err);
-      }
-
-      // Configure or add 3D building extrusion layer with smooth height transition based on zoom
-      try {
-        const hasExistingLayer = map.getLayer('building-3d');
-        if (hasExistingLayer) {
-          // Set minzoom to 13 so it starts transitioning earlier
-          map.setLayerZoomRange('building-3d', 13, 24);
-          
-          map.setPaintProperty('building-3d', 'fill-extrusion-height', [
-            'interpolate',
-            ['linear'],
-            ['zoom'],
-            13, 0,
-            16.5, ['coalesce', ['get', 'render_height'], ['get', 'height'], 15]
-          ]);
-
-          map.setPaintProperty('building-3d', 'fill-extrusion-base', [
-            'interpolate',
-            ['linear'],
-            ['zoom'],
-            13, 0,
-            16.5, ['coalesce', ['get', 'render_min_height'], ['get', 'min_height'], 0]
-          ]);
-
-          map.setPaintProperty('building-3d', 'fill-extrusion-color', '#e2e8f0');
-          map.setPaintProperty('building-3d', 'fill-extrusion-opacity', 0.85);
-        } else {
-          // Fallback: Add 3D buildings layer dynamically
-          const layers = map.getStyle().layers;
-          let sourceId = 'openmaptiles';
-          let beforeId: string | undefined = undefined;
-          if (layers) {
-            const buildingLayer = layers.find(l => l['source-layer'] === 'building');
-            if (buildingLayer) {
-              sourceId = buildingLayer.source;
-            } else {
-              const anyVectorLayer = layers.find(l => l.source && l.source !== 'foursquare-places' && l.source !== 'ne2_shaded');
-              if (anyVectorLayer) {
-                sourceId = anyVectorLayer.source;
-              }
-            }
-            const firstSymbolLayer = layers.find(l => l.type === 'symbol');
-            if (firstSymbolLayer) {
-              beforeId = firstSymbolLayer.id;
-            }
-          }
-
-          map.addLayer({
-            id: 'building-3d',
-            source: sourceId,
-            'source-layer': 'building',
-            type: 'fill-extrusion',
-            minzoom: 13,
-            paint: {
-              'fill-extrusion-color': '#e2e8f0',
-              'fill-extrusion-height': [
-                'interpolate',
-                ['linear'],
-                ['zoom'],
-                13, 0,
-                16.5, ['coalesce', ['get', 'height'], 15]
-              ],
-              'fill-extrusion-base': [
-                'interpolate',
-                ['linear'],
-                ['zoom'],
-                13, 0,
-                16.5, ['coalesce', ['get', 'min_height'], 0]
-              ],
-              'fill-extrusion-opacity': 0.85
-            }
-          }, beforeId);
-        }
-      } catch (err) {
-        console.warn('Error configuring 3D buildings layer:', err);
-      }
-
-      // Add foursquare-places source
-      map.addSource('foursquare-places', {
-        type: 'vector',
-        url: `${window.location.origin}/tiles/get_foursquare_places`
+    const handlePoiClick = (e: any) => {
+      const features = map.queryRenderedFeatures(e.point, {
+        layers: ['foursquare-places-layer']
       });
+      if (!features.length) return;
 
-      // Add foursquare layers
-      map.addLayer({
-        id: 'foursquare-places-layer',
-        type: 'symbol',
-        source: 'foursquare-places',
-        'source-layer': 'foursquare_places',
-        layout: {
-          'icon-image': [
-            'match',
-            ['get', 'category'],
-            [
-              'coffee_shop', 'cafe', 'restaurant', 'indonesian_restaurant', 'asian_restaurant', 
-              'chinese_restaurant', 'noodles_restaurant', 'fast_food_restaurant', 'chicken_restaurant', 
-              'japanese_restaurant', 'bakery', 'food_court', 'dessert_shop', 'ice_cream_parlor', 
-              'tea_room', 'juice_bar', 'food_truck'
-            ], 'icon-coffee',
-            [
-              'hotel', 'accommodation', 'hostel', 'resort'
-            ], 'icon-bed',
-            [
-              'airport', 'train_station', 'metro_station', 'bus_station', 'bus_stop'
-            ], 'icon-transit',
-            [
-              'shopping_center', 'shopping_mall', 'department_store', 'landmark_and_historical_building'
-            ], 'icon-shopping',
-            [
-              'park', 'tourist_attraction', 'plaza', 'scenic_lookout'
-            ], 'icon-tree',
-            [
-              'art_gallery', 'museum', 'theater', 'cinema', 'music_venue', 'cultural_center', 'arts_and_entertainment'
-            ], 'icon-ticket',
-            [
-              'sports_club', 'stadium', 'sports_complex', 'playground', 'gym_fitness_center', 'recreation_center'
-            ], 'icon-trophy',
-            [
-              'mosque', 'church_cathedral', 'temple', 'community_center', 'library', 'school', 'education', 
-              'college_university', 'elementary_school', 'high_school'
-            ], 'icon-community',
-            'icon-default'
-          ],
-          'icon-size': [
-            'interpolate',
-            ['exponential', 1.5],
-            ['zoom'],
-            12, 0.5,
-            16, 0.8,
-            18, 1.0
-          ],
-          'icon-allow-overlap': true,
-          'icon-ignore-placement': true
-        }
-      });
+      const feature = features[0];
+      const lngLat = (feature.geometry as any).coordinates.slice();
+      const { name, category, address } = feature.properties || {};
 
-      // Add foursquare labels layer
-      const colors = {
-        colorFood: '#f59e0b',
-        colorTransit: '#3b82f6',
-        colorNature: '#10b981',
-        colorArts: '#06b6d4',
-        colorCommunity: '#a855f7',
-        colorDefault: '#64748b'
+      const venueId = feature.properties?.id || feature.properties?.foursquare_id || String(Math.random());
+      const weight = parseFloat((4.0 + (Math.abs((name || '').split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0)) % 10) / 10).toFixed(1));
+
+      const venue: Venue = {
+        id: venueId,
+        name: name || 'Venue',
+        category: category || 'Uncategorized',
+        coordinates: [lngLat[0], lngLat[1]],
+        address: address || 'Indonesia',
+        weight
       };
 
-      map.addLayer({
-        id: 'foursquare-places-labels',
-        type: 'symbol',
-        source: 'foursquare-places',
-        'source-layer': 'foursquare_places',
-        minzoom: 14.5,
-        layout: {
-          'text-field': '{name}',
-          'text-font': ['Noto Sans Regular'],
-          'text-size': [
-            'interpolate',
-            ['linear'],
-            ['zoom'],
-            14.5, 9,
-            18, 12
-          ],
-          'text-variable-anchor': ['left', 'right', 'top', 'bottom'],
-          'text-radial-offset': 1.2,
-          'text-justify': 'auto',
-          'text-padding': 4,
-          'text-max-width': 7,
-          'text-allow-overlap': false,
-          'text-ignore-placement': false,
-          'text-optional': true
-        },
-        paint: {
-          'text-color': [
-            'match',
-            ['get', 'category'],
-            [
-              'coffee_shop', 'cafe', 'restaurant', 'indonesian_restaurant', 'asian_restaurant', 
-              'chinese_restaurant', 'noodles_restaurant', 'fast_food_restaurant', 'chicken_restaurant', 
-              'japanese_restaurant', 'bakery', 'food_court', 'dessert_shop', 'ice_cream_parlor', 
-              'tea_room', 'juice_bar', 'food_truck'
-            ], colors.colorFood,
-            [
-              'hotel', 'accommodation', 'hostel', 'resort',
-              'airport', 'train_station', 'metro_station', 'bus_station', 'bus_stop',
-              'shopping_center', 'shopping_mall', 'department_store', 'landmark_and_historical_building'
-            ], colors.colorTransit,
-            [
-              'park', 'tourist_attraction', 'plaza', 'scenic_lookout'
-            ], colors.colorNature,
-            [
-              'art_gallery', 'museum', 'theater', 'cinema', 'music_venue', 'cultural_center', 'arts_and_entertainment',
-              'sports_club', 'stadium', 'sports_complex', 'playground', 'gym_fitness_center', 'recreation_center'
-            ], colors.colorArts,
-            [
-              'mosque', 'church_cathedral', 'temple', 'community_center', 'library', 'school', 'education', 
-              'college_university', 'elementary_school', 'high_school'
-            ], colors.colorCommunity,
-            colors.colorDefault
-          ],
-          'text-halo-color': '#ffffff',
-          'text-halo-width': 1.5
+      selectVenue(venue);
+    };
+
+    const handleMouseEnter = () => {
+      map.getCanvas().style.cursor = 'pointer';
+    };
+
+    const handleMouseLeave = () => {
+      map.getCanvas().style.cursor = '';
+    };
+
+    // Force Globe projection once the style is loaded for Mapbox GL feel
+    map.on('style.load', () => {
+      // Register custom phosphor icons to map, then execute layer setup inside the callback
+      registerMapIcons(map, () => {
+        try {
+          if (typeof map.setProjection === 'function') {
+            map.setProjection({ type: 'globe' });
+          }
+        } catch (err) {
+          console.warn('Globe projection not supported on this maplibre version/environment:', err);
         }
-      });
 
-      // Select venue when a POI is clicked
-      map.on('click', 'foursquare-places-layer', (e) => {
-        const features = map.queryRenderedFeatures(e.point, {
-          layers: ['foursquare-places-layer']
-        });
-        if (!features.length) return;
+        // Add Three.js starfield skybox — pure point stars, no galaxy texture
+        try {
+          if (!map.getLayer('starfield')) {
+            const starfield = new MaplibreStarfieldLayer({
+              id: 'starfield',
+              starCount: 10000,
+              starSize: 2.5,
+              starColor: 0xffffff,
+            });
+            // Insert above background layer so stars render on top of space background but behind features
+            const layers = map.getStyle().layers || [];
+            const bgIndex = layers.findIndex((l: any) => l.id === 'background');
+            const insertBeforeId = bgIndex !== -1 && bgIndex + 1 < layers.length ? layers[bgIndex + 1].id : undefined;
+            map.addLayer(starfield as any, insertBeforeId);
 
-        const feature = features[0];
-        const lngLat = (feature.geometry as any).coordinates.slice();
-        const { name, category, address } = feature.properties || {};
+            // Enable depth testing so stars are occluded by the globe sphere
+            const sfAny = starfield as any;
+            if (sfAny.starMaterial) {
+              sfAny.starMaterial.depthTest = true;
+            }
+            if (sfAny.sunMaterial) {
+              sfAny.sunMaterial.depthTest = true;
+            }
 
-        const venueId = feature.properties?.id || feature.properties?.foursquare_id || String(Math.random());
-        const weight = parseFloat((4.0 + (Math.abs((name || '').split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0)) % 10) / 10).toFixed(1));
+            starfieldRef.current = starfield;
+          }
+        } catch (err) {
+          console.warn('Starfield layer init failed:', err);
+        }
 
-        const venue: Venue = {
-          id: venueId,
-          name: name || 'Venue',
-          category: category || 'Uncategorized',
-          coordinates: [lngLat[0], lngLat[1]],
-          address: address || 'Indonesia',
-          weight
-        };
+        // Configure the 3D building zoom transition
+        try {
+          const hasExistingLayer = map.getLayer('building-3d');
+          if (hasExistingLayer) {
+            map.setLayerZoomRange('building-3d', 13, 24);
+          }
+        } catch (err) {
+          console.warn('Error setting building zoom range:', err);
+        }
 
-        selectVenue(venue);
-      });
+        // Apply initial theme properties for current hour
+        applyThemeForHour(map, currentHour);
 
-      // Hover effect for markers
-      map.on('mouseenter', 'foursquare-places-layer', () => {
-        map.getCanvas().style.cursor = 'pointer';
-      });
-      map.on('mouseleave', 'foursquare-places-layer', () => {
-        map.getCanvas().style.cursor = '';
+        // Remove default map POIs to avoid overlap with Foursquare places
+        try {
+          const layers = map.getStyle().layers;
+          if (layers) {
+            layers.forEach((layer) => {
+              const isPoi = layer.id.includes('poi') || 
+                            (layer['source-layer'] && layer['source-layer'].includes('poi')) ||
+                            (layer.sourceLayer && layer.sourceLayer.includes('poi'));
+              
+              // Do NOT remove our own custom Foursquare layers
+              const isCustomLayer = layer.id.includes('foursquare-places');
+              
+              if (isPoi && !isCustomLayer) {
+                map.removeLayer(layer.id);
+              }
+            });
+          }
+        } catch (err) {
+          console.warn('Error removing default POI layers:', err);
+        }
+
+        // Add foursquare-places source if it doesn't exist
+        if (!map.getSource('foursquare-places')) {
+          map.addSource('foursquare-places', {
+            type: 'vector',
+            url: `${window.location.origin}/tiles/get_foursquare_places`
+          });
+        }
+
+        // Add foursquare layers if they don't exist
+        if (!map.getLayer('foursquare-places-layer')) {
+          const colors = {
+            colorFood: '#f59e0b',
+            colorTransit: '#3b82f6',
+            colorNature: '#10b981',
+            colorArts: '#06b6d4',
+            colorCommunity: '#a855f7',
+            colorDefault: '#64748b'
+          };
+
+          map.addLayer({
+            id: 'foursquare-places-layer',
+            type: 'symbol',
+            source: 'foursquare-places',
+            'source-layer': 'foursquare_places',
+            layout: {
+              // Icon layout properties
+              'icon-image': [
+                'match',
+                ['get', 'category'],
+                [
+                  'coffee_shop', 'cafe', 'restaurant', 'indonesian_restaurant', 'asian_restaurant', 
+                  'chinese_restaurant', 'noodles_restaurant', 'fast_food_restaurant', 'chicken_restaurant', 
+                  'japanese_restaurant', 'bakery', 'food_court', 'dessert_shop', 'ice_cream_parlor', 
+                  'tea_room', 'juice_bar', 'food_truck'
+                ], 'icon-coffee',
+                [
+                  'hotel', 'accommodation', 'hostel', 'resort'
+                ], 'icon-bed',
+                [
+                  'airport', 'train_station', 'metro_station', 'bus_station', 'bus_stop'
+                ], 'icon-transit',
+                [
+                  'shopping_center', 'shopping_mall', 'department_store', 'landmark_and_historical_building'
+                ], 'icon-shopping',
+                [
+                  'park', 'tourist_attraction', 'plaza', 'scenic_lookout'
+                ], 'icon-tree',
+                [
+                  'art_gallery', 'museum', 'theater', 'cinema', 'music_venue', 'cultural_center', 'arts_and_entertainment'
+                ], 'icon-ticket',
+                [
+                  'sports_club', 'stadium', 'sports_complex', 'playground', 'gym_fitness_center', 'recreation_center'
+                ], 'icon-trophy',
+                [
+                  'mosque', 'church_cathedral', 'temple', 'community_center', 'library', 'school', 'education', 
+                  'college_university', 'elementary_school', 'high_school'
+                ], 'icon-community',
+                'icon-default'
+              ],
+              'icon-size': [
+                'interpolate',
+                ['exponential', 1.5],
+                ['zoom'],
+                12, 0.5,
+                16, 0.8,
+                18, 1.0
+              ],
+              'icon-allow-overlap': false,
+              'icon-ignore-placement': false,
+              'icon-padding': 10,
+              'icon-optional': false,
+
+              // Text layout properties
+              'text-field': [
+                'step',
+                ['zoom'],
+                '',
+                14.5, ['get', 'name']
+              ],
+              'text-font': ['Noto Sans Regular'],
+              'text-size': [
+                'interpolate',
+                ['linear'],
+                ['zoom'],
+                14.5, 9,
+                18, 12
+              ],
+              'text-variable-anchor': ['right', 'left', 'top', 'bottom'],
+              'text-radial-offset': 1.2,
+              'text-justify': 'auto',
+              'text-padding': 8,
+              'text-max-width': 7,
+              'text-allow-overlap': false,
+              'text-ignore-placement': false,
+              'text-optional': true,
+
+              // Priority sorting key
+              'symbol-sort-key': ['get', 'density_rank']
+            },
+            paint: {
+              'text-color': [
+                'match',
+                ['get', 'category'],
+                [
+                  'coffee_shop', 'cafe', 'restaurant', 'indonesian_restaurant', 'asian_restaurant', 
+                  'chinese_restaurant', 'noodles_restaurant', 'fast_food_restaurant', 'chicken_restaurant', 
+                  'japanese_restaurant', 'bakery', 'food_court', 'dessert_shop', 'ice_cream_parlor', 
+                  'tea_room', 'juice_bar', 'food_truck'
+                ], colors.colorFood,
+                [
+                  'hotel', 'accommodation', 'hostel', 'resort',
+                  'airport', 'train_station', 'metro_station', 'bus_station', 'bus_stop',
+                  'shopping_center', 'shopping_mall', 'department_store', 'landmark_and_historical_building'
+                ], colors.colorTransit,
+                [
+                  'park', 'tourist_attraction', 'plaza', 'scenic_lookout'
+                ], colors.colorNature,
+                [
+                  'art_gallery', 'museum', 'theater', 'cinema', 'music_venue', 'cultural_center', 'arts_and_entertainment',
+                  'sports_club', 'stadium', 'sports_complex', 'playground', 'gym_fitness_center', 'recreation_center'
+                ], colors.colorArts,
+                [
+                  'mosque', 'church_cathedral', 'temple', 'community_center', 'library', 'school', 'education', 
+                  'college_university', 'elementary_school', 'high_school'
+                ], colors.colorCommunity,
+                colors.colorDefault
+              ],
+              'text-halo-color': '#ffffff',
+              'text-halo-width': 1.5
+            }
+          });
+        }
+
+        // Safe event registration (off first then on)
+        map.off('click', 'foursquare-places-layer', handlePoiClick);
+        map.on('click', 'foursquare-places-layer', handlePoiClick);
+
+        map.off('mouseenter', 'foursquare-places-layer', handleMouseEnter);
+        map.on('mouseenter', 'foursquare-places-layer', handleMouseEnter);
+
+        map.off('mouseleave', 'foursquare-places-layer', handleMouseLeave);
+        map.on('mouseleave', 'foursquare-places-layer', handleMouseLeave);
       });
     });
 
@@ -603,6 +1021,9 @@ export default function FullScreenMap() {
       const el = document.createElement('div');
       el.className = 'user-location-marker';
       el.innerHTML = `
+        <div class="user-radar-ring ring-1"></div>
+        <div class="user-radar-ring ring-2"></div>
+        <div class="user-radar-ring ring-3"></div>
         <div class="user-location-pulse"></div>
         <div class="user-location-dot">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="12" height="12" fill="#ffffff">
@@ -628,9 +1049,81 @@ export default function FullScreenMap() {
     };
   }, [currentUserLocation]);
 
+  // 7. Update fireflies positions when venues change
+
+
+  const displayHour = Math.floor(currentHour);
+  const displayMinutes = Math.floor((currentHour - displayHour) * 60);
+  const clockText = `${String(displayHour).padStart(2, '0')}:${String(displayMinutes).padStart(2, '0')}`;
+
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%', backgroundColor: 'var(--bg-space)', overflow: 'hidden' }}>
+    <div style={{ position: 'relative', width: '100%', height: '100%', backgroundColor: '#02040a', overflow: 'hidden' }}>
       <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
+      
+      {/* Floating Time of Day Slider Widget */}
+      <div className="time-slider-widget glass-panel">
+        <div className="time-slider-header">
+          <div className="time-slider-title-group">
+            <span className="time-slider-icon">
+              {currentHour >= 20 || currentHour < 5 ? '🌙' : 
+               currentHour >= 5 && currentHour < 8 ? '🌅' : 
+               currentHour >= 8 && currentHour < 17 ? '☀️' : '🌇'}
+            </span>
+            <div>
+              <h4 className="time-slider-title">Waktu Map</h4>
+              <p className="time-slider-desc">
+                {currentHour >= 20 || currentHour < 5 ? 'Malam (Cosmic Neon)' : 
+                 currentHour >= 5 && currentHour < 8 ? 'Pagi (Rose Sunrise)' : 
+                 currentHour >= 8 && currentHour < 17 ? 'Siang (Crisp Warm Day)' : 'Sore (Golden Sunset)'}
+              </p>
+            </div>
+          </div>
+          <span className="time-slider-clock">
+            {clockText}
+          </span>
+        </div>
+
+        <input 
+          type="range" 
+          min="0" 
+          max="23.95" 
+          step="0.05"
+          value={currentHour} 
+          onChange={(e) => setCurrentHour(parseFloat(e.target.value))}
+          className="time-slider-range"
+        />
+
+        <div className="time-slider-presets">
+          <button 
+            type="button"
+            className={`time-preset-btn ${currentHour >= 5 && currentHour < 8 ? 'active' : ''}`}
+            onClick={() => setCurrentHour(6)}
+          >
+            🌅 Pagi
+          </button>
+          <button 
+            type="button"
+            className={`time-preset-btn ${currentHour >= 8 && currentHour < 17 ? 'active' : ''}`}
+            onClick={() => setCurrentHour(12)}
+          >
+            ☀️ Siang
+          </button>
+          <button 
+            type="button"
+            className={`time-preset-btn ${currentHour >= 17 && currentHour < 20 ? 'active' : ''}`}
+            onClick={() => setCurrentHour(18)}
+          >
+            🌇 Sore
+          </button>
+          <button 
+            type="button"
+            className={`time-preset-btn ${currentHour >= 20 || currentHour < 5 ? 'active' : ''}`}
+            onClick={() => setCurrentHour(21)}
+          >
+            🌙 Malam
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -249,21 +249,52 @@
 .cosmic-backdrop {
   position: absolute;
   inset: 0;
-  background: radial-gradient(circle at 80% 20%, #0c1a30 0%, #030712 100%);
+  background: radial-gradient(ellipse at 30% 40%, rgba(15, 5, 40, 0.6) 0%, transparent 50%),
+              radial-gradient(ellipse at 70% 60%, rgba(6, 20, 50, 0.4) 0%, transparent 50%),
+              radial-gradient(circle at 50% 50%, #05010d 0%, #020408 100%);
   z-index: 5;
   overflow: hidden;
+}
+.cosmic-backdrop::before {
+  content: '';
+  position: absolute;
+  inset: -100px;
+  background-image: 
+    radial-gradient(2px 2px at 20px 30px, #ffffff, rgba(0,0,0,0)),
+    radial-gradient(2px 2px at 40px 70px, #ffffff, rgba(0,0,0,0)),
+    radial-gradient(2.5px 2.5px at 50px 160px, #06b6d4, rgba(0,0,0,0)),
+    radial-gradient(2px 2px at 90px 40px, #ffffff, rgba(0,0,0,0)),
+    radial-gradient(2px 2px at 130px 80px, #ec4899, rgba(0,0,0,0)),
+    radial-gradient(2.5px 2.5px at 160px 120px, #ffffff, rgba(0,0,0,0));
+  background-repeat: repeat;
+  background-size: 250px 250px;
+  opacity: 0.25;
+  animation: floatStars 90s infinite linear;
 }
 .cosmic-backdrop::after {
   content: '';
   position: absolute;
   inset: 0;
   background-image: 
-    radial-gradient(white, rgba(255,255,255,.2) 2px, transparent 40px),
-    radial-gradient(white, rgba(255,255,255,.15) 1px, transparent 30px),
-    radial-gradient(white, rgba(255,255,255,.1) 2px, transparent 40px);
-  background-size: 550px 550px, 350px 350px, 250px 250px;
-  background-position: 0 0, 40px 60px, 130px 270px;
-  opacity: 0.15;
+    radial-gradient(3px 3px at 15px 15px, rgba(255, 255, 255, 0.95), rgba(0,0,0,0)),
+    radial-gradient(2px 2px at 60px 50px, rgba(255, 255, 255, 0.8), rgba(0,0,0,0)),
+    radial-gradient(3px 3px at 100px 120px, rgba(6, 182, 212, 0.9), rgba(0,0,0,0)),
+    radial-gradient(2px 2px at 170px 150px, rgba(255, 255, 255, 0.7), rgba(0,0,0,0));
+  background-repeat: repeat;
+  background-size: 350px 350px;
+  opacity: 0.2;
+  animation: twinkle 8s infinite ease-in-out alternate;
+}
+
+@keyframes twinkle {
+  0% { opacity: 0.12; }
+  50% { opacity: 0.35; }
+  100% { opacity: 0.18; }
+}
+
+@keyframes floatStars {
+  from { transform: translateY(0) rotate(0deg); }
+  to { transform: translateY(-100px) rotate(8deg); }
 }
 
 /* Glassmorphism Panel Utility */
@@ -319,30 +350,42 @@
 }
 
 .custom-marker-icon {
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
-  border: 2px solid var(--color-cyan-400);
-  background: rgba(11, 15, 25, 0.9);
-  color: var(--color-cyan-400);
+  border: 2px solid var(--category-glow-color, var(--color-cyan-400));
+  background: rgba(11, 15, 25, 0.75);
+  color: var(--category-glow-color, var(--color-cyan-400));
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5);
-  transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), 
+  box-shadow: 
+    0 8px 20px rgba(0, 0, 0, 0.4),
+    0 0 15px var(--category-glow-color, rgba(6, 182, 212, 0.2));
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), 
               background-color 0.3s ease, 
-              color 0.3s ease;
+              color 0.3s ease,
+              border-color 0.3s ease,
+              box-shadow 0.3s ease;
 }
 .custom-marker:hover .custom-marker-icon {
-  transform: scale(1.1);
-  border-color: var(--color-cyan-300);
+  transform: scale(1.18) translateY(-2px);
+  border-color: #ffffff;
+  color: #ffffff;
+  box-shadow: 
+    0 12px 24px rgba(0, 0, 0, 0.5),
+    0 0 25px var(--category-glow-color, rgba(6, 182, 212, 0.6));
 }
 .custom-marker.selected .custom-marker-icon {
-  transform: scale(1.2);
-  background: var(--color-cyan-500);
+  transform: scale(1.28) translateY(-4px);
+  background: var(--category-glow-color, var(--color-cyan-500));
   color: #02040a;
-  border-color: var(--color-cyan-400);
-  box-shadow: var(--shadow-glow);
+  border-color: #ffffff;
+  box-shadow: 
+    0 16px 32px rgba(0, 0, 0, 0.6),
+    0 0 30px var(--category-glow-color, rgba(6, 182, 212, 0.8));
 }
 
 .custom-marker-tooltip {
@@ -363,35 +406,45 @@
 }
 
 .tooltip-content {
-  background: rgba(2, 4, 10, 0.95);
-  border: 1px solid var(--color-bg-slate-800);
-  padding: 8px 12px;
-  border-radius: 10px;
-  font-size: 11px;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  padding: 10px 14px;
+  border-radius: 14px;
+  font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
-  box-shadow: var(--shadow-premium);
-  backdrop-filter: blur(8px);
+  backdrop-filter: blur(20px) saturate(190%);
+  -webkit-backdrop-filter: blur(20px) saturate(190%);
+  box-shadow: 
+    0 4px 30px rgba(0, 0, 0, 0.4),
+    0 0 20px var(--category-glow-color, rgba(6, 182, 212, 0.2));
+  color: #f8fafc;
+  transition: all 0.3s ease;
 }
 .tooltip-title {
-  color: var(--color-cyan-300);
+  color: #ffffff;
   font-weight: 800;
-  margin-bottom: 2px;
+  margin-bottom: 3px;
+  text-shadow: 0 0 8px var(--category-glow-color, rgba(6, 182, 212, 0.5));
+  font-size: 13px;
+  letter-spacing: -0.01em;
 }
 .tooltip-subtitle {
-  color: var(--color-text-secondary);
-  font-size: 9px;
+  color: rgba(248, 250, 252, 0.7);
+  font-size: 10px;
+  font-weight: 500;
 }
 .tooltip-arrow {
-  width: 8px;
-  height: 8px;
-  background: rgba(2, 4, 10, 0.95);
-  border-right: 1px solid var(--color-bg-slate-800);
-  border-bottom: 1px solid var(--color-bg-slate-800);
+  width: 10px;
+  height: 10px;
+  background: rgba(15, 23, 42, 0.65);
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
   transform: rotate(45deg) translateX(-50%) translateY(-5px);
   position: absolute;
   top: 100%;
   left: 50%;
+  backdrop-filter: blur(20px);
 }
 
 @keyframes pulse-ring {
@@ -448,5 +501,215 @@
     transform: scale(1.6);
     opacity: 0;
   }
+}
+
+/* User Radar Rings styling */
+.user-radar-ring {
+  position: absolute;
+  border: 1.5px solid rgba(6, 182, 212, 0.6);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+  width: 24px;
+  height: 24px;
+  opacity: 0;
+  transform: scale(1);
+}
+
+.user-radar-ring.ring-1 {
+  animation: radar-pulse 3s infinite linear;
+}
+
+.user-radar-ring.ring-2 {
+  animation: radar-pulse 3s infinite linear 1s;
+}
+
+.user-radar-ring.ring-3 {
+  animation: radar-pulse 3s infinite linear 2s;
+}
+
+@keyframes radar-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 0.4;
+  }
+  100% {
+    transform: scale(6);
+    opacity: 0;
+  }
+}
+
+/* Floating Time of Day Slider Widget styling */
+.time-slider-widget {
+  position: absolute;
+  z-index: 30;
+  width: calc(100% - 32px);
+  max-width: 320px;
+  padding: 16px;
+  border-radius: 20px;
+  background: rgba(15, 23, 42, 0.65);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  pointer-events: auto;
+}
+
+/* Position based on screen width to avoid UI collision */
+@media (min-width: 768px) {
+  .time-slider-widget {
+    top: 16px;
+    right: 16px;
+    bottom: auto;
+    left: auto;
+    transform: none;
+  }
+}
+@media (max-width: 767px) {
+  .time-slider-widget {
+    top: 76px; /* Sits beautifully right underneath the mobile search bar */
+    right: 16px;
+    bottom: auto;
+    left: auto;
+    transform: none;
+  }
+}
+
+.time-slider-widget:hover {
+  background: rgba(15, 23, 42, 0.75);
+  box-shadow: 0 30px 60px rgba(0, 0, 0, 0.5);
+  transform: translateY(-2px);
+}
+
+.time-slider-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.time-slider-title-group {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.time-slider-icon {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.time-slider-title {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  color: #ffffff;
+}
+
+.time-slider-desc {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.6);
+  font-weight: 500;
+}
+
+.time-slider-clock {
+  font-size: 16px;
+  font-weight: 800;
+  font-family: monospace;
+  background: rgba(255, 255, 255, 0.1);
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+/* Custom styling for input range slider */
+.time-slider-range {
+  -webkit-appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.2);
+  outline: none;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.time-slider-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #06b6d4;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.8);
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+
+.time-slider-range::-webkit-slider-thumb:hover {
+  transform: scale(1.2);
+  background: #22c55e;
+  box-shadow: 0 0 15px rgba(34, 197, 94, 0.8);
+}
+
+.time-slider-range::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #06b6d4;
+  border: 2px solid #ffffff;
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.8);
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+
+.time-slider-range::-moz-range-thumb:hover {
+  transform: scale(1.2);
+  background: #22c55e;
+  box-shadow: 0 0 15px rgba(34, 197, 94, 0.8);
+}
+
+.time-slider-presets {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.time-preset-btn {
+  flex: 1;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.8);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  transition: all 0.2s ease;
+}
+
+.time-preset-btn:hover {
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.time-preset-btn.active {
+  background: rgba(6, 182, 212, 0.25);
+  border-color: #06b6d4;
+  color: #22d3ee;
+  box-shadow: 0 0 12px rgba(6, 182, 212, 0.3);
 }
 
