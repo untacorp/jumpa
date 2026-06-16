@@ -13,6 +13,14 @@ export const isLocating = atom<boolean>(false);
 // Selected venue / active marker
 export const selectedVenue = atom<Venue | null>(null);
 
+// Active Navigation Tab: map, chat, activity, profile
+export type NavigationTab = 'map' | 'chat' | 'activity' | 'profile';
+export const activeTab = atom<NavigationTab>('map');
+
+export function setActiveTab(tab: NavigationTab) {
+  activeTab.set(tab);
+}
+
 // Map theme mode: auto (time-based), day, night, sunset
 export type MapThemeMode = 'auto' | 'day' | 'night' | 'sunset';
 export const mapTheme = atom<MapThemeMode>('auto');
@@ -37,48 +45,7 @@ if (typeof document !== 'undefined') {
 }
 
 // Sample venues around Jakarta
-export const venues = atom<readonly Venue[]>([
-  {
-    id: 'venue-1',
-    name: 'Giyanti Coffee Roastery',
-    category: 'Coffee Shop',
-    coordinates: [106.8402, -6.1895],
-    address: 'Jl. Surabaya No.20, Menteng',
-    weight: 4.8,
-  },
-  {
-    id: 'venue-2',
-    name: 'Kopi Toko Djawa (Menteng)',
-    category: 'Coffee Shop',
-    coordinates: [106.8245, -6.1852],
-    address: 'Jl. Johar No.34, Menteng',
-    weight: 4.6,
-  },
-  {
-    id: 'venue-3',
-    name: 'SCBD Common Ground',
-    category: 'Coworking Space',
-    coordinates: [106.8095, -6.2244],
-    address: 'Sudirman Central Business District',
-    weight: 4.7,
-  },
-  {
-    id: 'venue-4',
-    name: 'Gelora Bung Karno Park',
-    category: 'Green Park',
-    coordinates: [106.8016, -6.2184],
-    address: 'Jl. Jenderal Sudirman, Senayan',
-    weight: 4.9,
-  },
-  {
-    id: 'venue-5',
-    name: 'Senopati Culinary Hub',
-    category: 'Restaurant',
-    coordinates: [106.8078, -6.2281],
-    address: 'Jl. Senopati, Kebayoran Baru',
-    weight: 4.5,
-  }
-]);
+export const venues = atom<readonly Venue[]>([]);
 
 // Helper functions to mutate state
 export function setMapCenter(lng: number, lat: number) {
@@ -118,7 +85,10 @@ export function selectVenue(venue: Venue | null) {
   selectedVenue.set(venue);
   if (venue) {
     setMapCenter(venue.coordinates[0], venue.coordinates[1]);
-    setMapZoom(14.5);
+    // Only adjust zoom if the current view is zoomed out further than 15.5
+    if (mapZoom.get() < 15.5) {
+      setMapZoom(15.5);
+    }
   }
 }
 

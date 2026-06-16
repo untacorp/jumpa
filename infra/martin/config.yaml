@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/maplibre/martin/main/schemas/config.json
+
+postgres:
+  connection_string: ${DATABASE_URL}
+  auto_publish:
+    tables:
+      from_schemas:
+        - public
+    functions:
+      from_schemas:
+        - public
+
+pmtiles:
+  paths:
+    - /data

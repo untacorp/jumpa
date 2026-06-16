@@ -105,7 +105,7 @@ function createMarkerElement(venue: Venue, isSelected: boolean, onClick: () => v
     <div class="custom-marker-tooltip">
       <div class="tooltip-content">
         <p class="tooltip-title">${venue.name}</p>
-        <p class="tooltip-subtitle">${venue.category} • ★ ${venue.weight}</p>
+        <p class="tooltip-subtitle" style="text-transform: capitalize;">${venue.category.replace(/_/g, ' ')} • ★ ${venue.weight}</p>
       </div>
       <div class="tooltip-arrow"></div>
     </div>
@@ -147,6 +147,7 @@ export default function FullScreenMap() {
       pitchWithRotate: true,
       dragRotate: true,
       touchZoomRotate: true,
+      attributionControl: false,
     });
 
     mapRef.current = map;
@@ -162,6 +163,124 @@ export default function FullScreenMap() {
         }
       } catch (err) {
         console.warn('Globe projection not supported on this maplibre version/environment:', err);
+      }
+
+      // Customize road colors to green for a premium custom map aesthetic
+      try {
+        const layers = map.getStyle().layers;
+        if (layers) {
+          layers.forEach((layer) => {
+            const isRoad = layer.id.includes('road') || 
+                           layer.id.includes('highway') || 
+                           layer.id.includes('street') || 
+                           layer.id.includes('path') || 
+                           layer.id.includes('link');
+            if (isRoad && layer.type === 'line') {
+              if (layer.id.includes('casing')) {
+                map.setPaintProperty(layer.id, 'line-color', '#15803d'); // Dark green casing
+              } else if (layer.id.includes('motorway') || layer.id.includes('trunk') || layer.id.includes('primary')) {
+                map.setPaintProperty(layer.id, 'line-color', '#22c55e'); // Vibrant green for major roads
+              } else {
+                map.setPaintProperty(layer.id, 'line-color', '#86efac'); // Light green for minor roads
+              }
+            }
+          });
+        }
+      } catch (err) {
+        console.warn('Error custom styling road layers:', err);
+      }
+
+      // Remove default map POIs to avoid overlap with Foursquare places
+      try {
+        const layers = map.getStyle().layers;
+        if (layers) {
+          layers.forEach((layer) => {
+            const isPoi = layer.id.includes('poi') || 
+                          (layer['source-layer'] && layer['source-layer'].includes('poi')) ||
+                          (layer.sourceLayer && layer.sourceLayer.includes('poi'));
+            if (isPoi) {
+              map.removeLayer(layer.id);
+            }
+          });
+        }
+      } catch (err) {
+        console.warn('Error removing default POI layers:', err);
+      }
+
+      // Configure or add 3D building extrusion layer with smooth height transition based on zoom
+      try {
+        const hasExistingLayer = map.getLayer('building-3d');
+        if (hasExistingLayer) {
+          // Set minzoom to 13 so it starts transitioning earlier
+          map.setLayerZoomRange('building-3d', 13, 24);
+          
+          map.setPaintProperty('building-3d', 'fill-extrusion-height', [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            13, 0,
+            16.5, ['coalesce', ['get', 'render_height'], ['get', 'height'], 15]
+          ]);
+
+          map.setPaintProperty('building-3d', 'fill-extrusion-base', [
+            'interpolate',
+            ['linear'],
+            ['zoom'],
+            13, 0,
+            16.5, ['coalesce', ['get', 'render_min_height'], ['get', 'min_height'], 0]
+          ]);
+
+          map.setPaintProperty('building-3d', 'fill-extrusion-color', '#e2e8f0');
+          map.setPaintProperty('building-3d', 'fill-extrusion-opacity', 0.85);
+        } else {
+          // Fallback: Add 3D buildings layer dynamically
+          const layers = map.getStyle().layers;
+          let sourceId = 'openmaptiles';
+          let beforeId: string | undefined = undefined;
+          if (layers) {
+            const buildingLayer = layers.find(l => l['source-layer'] === 'building');
+            if (buildingLayer) {
+              sourceId = buildingLayer.source;
+            } else {
+              const anyVectorLayer = layers.find(l => l.source && l.source !== 'foursquare-places' && l.source !== 'ne2_shaded');
+              if (anyVectorLayer) {
+                sourceId = anyVectorLayer.source;
+              }
+            }
+            const firstSymbolLayer = layers.find(l => l.type === 'symbol');
+            if (firstSymbolLayer) {
+              beforeId = firstSymbolLayer.id;
+            }
+          }
+
+          map.addLayer({
+            id: 'building-3d',
+            source: sourceId,
+            'source-layer': 'building',
+            type: 'fill-extrusion',
+            minzoom: 13,
+            paint: {
+              'fill-extrusion-color': '#e2e8f0',
+              'fill-extrusion-height': [
+                'interpolate',
+                ['linear'],
+                ['zoom'],
+                13, 0,
+                16.5, ['coalesce', ['get', 'height'], 15]
+              ],
+              'fill-extrusion-base': [
+                'interpolate',
+                ['linear'],
+                ['zoom'],
+                13, 0,
+                16.5, ['coalesce', ['get', 'min_height'], 0]
+              ],
+              'fill-extrusion-opacity': 0.85
+            }
+          }, beforeId);
+        }
+      } catch (err) {
+        console.warn('Error configuring 3D buildings layer:', err);
       }
 
       // Add foursquare-places source
@@ -291,7 +410,7 @@ export default function FullScreenMap() {
         }
       });
 
-      // Show info popup when a venue is clicked
+      // Select venue when a POI is clicked
       map.on('click', 'foursquare-places-layer', (e) => {
         const features = map.queryRenderedFeatures(e.point, {
           layers: ['foursquare-places-layer']
@@ -299,27 +418,22 @@ export default function FullScreenMap() {
         if (!features.length) return;
 
         const feature = features[0];
-        const coordinates = (feature.geometry as any).coordinates.slice();
+        const lngLat = (feature.geometry as any).coordinates.slice();
         const { name, category, address } = feature.properties || {};
 
-        while (Math.abs(e.lngLat.lng - coordinates[0]) > 180) {
-          coordinates[0] += e.lngLat.lng > coordinates[0] ? 360 : -360;
-        }
+        const venueId = feature.properties?.id || feature.properties?.foursquare_id || String(Math.random());
+        const weight = parseFloat((4.0 + (Math.abs((name || '').split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0)) % 10) / 10).toFixed(1));
 
-        new maplibregl.Popup({ 
-          className: 'custom-popup',
-          closeButton: false,
-          anchor: 'bottom'
-        })
-          .setLngLat(coordinates)
-          .setHTML(`
-            <div style="font-family: system-ui, -apple-system, sans-serif; padding: 6px 10px; min-width: 140px;">
-              <h3 style="margin: 0 0 4px 0; font-size: 13px; font-weight: 600; color: #0f172a;">${name || 'Venue'}</h3>
-              <span style="display: inline-block; padding: 2px 6px; background-color: #f0fdf4; color: #16a34a; font-size: 10px; font-weight: 500; border-radius: 4px; margin-bottom: 6px;">${category || 'Uncategorized'}</span>
-              ${address ? `<p style="margin: 0; font-size: 11px; color: #64748b; line-height: 1.3;">${address}</p>` : ''}
-            </div>
-          `)
-          .addTo(map);
+        const venue: Venue = {
+          id: venueId,
+          name: name || 'Venue',
+          category: category || 'Uncategorized',
+          coordinates: [lngLat[0], lngLat[1]],
+          address: address || 'Jakarta, Indonesia',
+          weight
+        };
+
+        selectVenue(venue);
       });
 
       // Hover effect for markers
@@ -331,19 +445,54 @@ export default function FullScreenMap() {
       });
     });
 
-    map.addControl(
-      new maplibregl.NavigationControl({
-        showCompass: true,
-        visualizePitch: true,
-      }),
-      'bottom-right'
-    );
-
     map.on('moveend', () => {
       const newCenter = map.getCenter();
       const newZoom = map.getZoom();
       mapCenter.set([newCenter.lng, newCenter.lat]);
       mapZoom.set(newZoom);
+    });
+
+    map.on('idle', () => {
+      const features = map.queryRenderedFeatures(undefined, {
+        layers: ['foursquare-places-layer']
+      });
+
+      const uniqueVenuesMap = new Map<string, Venue>();
+      features.forEach((feature) => {
+        const name = feature.properties?.name;
+        if (!name) return;
+
+        const lngLat = (feature.geometry as any).coordinates;
+        if (!lngLat || lngLat.length < 2) return;
+
+        const venueId = feature.properties?.id || feature.properties?.foursquare_id || name;
+        if (uniqueVenuesMap.has(venueId)) return;
+
+        const category = feature.properties?.category || 'Venue';
+        const address = feature.properties?.address || 'Jakarta, Indonesia';
+        const weight = parseFloat((4.0 + (Math.abs(name.split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0)) % 10) / 10).toFixed(1));
+
+        uniqueVenuesMap.set(venueId, {
+          id: venueId,
+          name,
+          category,
+          coordinates: [lngLat[0], lngLat[1]],
+          address,
+          weight
+        });
+      });
+
+      const detectedVenues = Array.from(uniqueVenuesMap.values()).slice(0, 30);
+      if (detectedVenues.length > 0) {
+        import('@/store/mapStore').then(({ venues }) => {
+          const currentVenues = venues.get();
+          const currentIds = currentVenues.map(v => v.id).join(',');
+          const newIds = detectedVenues.map(v => v.id).join(',');
+          if (currentIds !== newIds) {
+            venues.set(detectedVenues);
+          }
+        });
+      }
     });
 
     return () => {
@@ -383,7 +532,7 @@ export default function FullScreenMap() {
     markersRef.current = {};
   }, [selectedVenue]);
 
-  // 4. Synchronize Venue markers with selection state and cinematic camera angles
+  // 4. Synchronize selected Venue marker
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
@@ -394,33 +543,26 @@ export default function FullScreenMap() {
     });
     markersRef.current = {};
 
-    // Re-add markers with selection state
-    venueList.forEach((venue) => {
-      const isSelected = currentSelectedVenue?.id === venue.id;
-      
-      const el = createMarkerElement(venue, isSelected, () => {
-        selectVenue(venue);
-        
-        // Satisfying Cinematic Camera Fly-in on click
+    if (currentSelectedVenue) {
+      const el = createMarkerElement(currentSelectedVenue, true, () => {
         map.flyTo({
-          center: [...venue.coordinates],
-          zoom: 14.5,
+          center: [...currentSelectedVenue.coordinates],
+          zoom: Math.max(map.getZoom(), 15.5),
           pitch: 55,       // Cinematic 3D buildings tilt
           bearing: -15,     // Cyberpunk angle rotation
-          duration: 1800,
+          duration: 1200,
           essential: true,
-          // Shift center down to ensure the tooltip above marker has plenty of space and doesn't cut off
           offset: [0, window.innerHeight * 0.12] 
         });
       });
 
       const marker = new maplibregl.Marker({ element: el })
-        .setLngLat([...venue.coordinates])
+        .setLngLat([...currentSelectedVenue.coordinates])
         .addTo(map);
 
-      markersRef.current[venue.id] = marker;
-    });
-  }, [venueList, currentSelectedVenue]);
+      markersRef.current[currentSelectedVenue.id] = marker;
+    }
+  }, [currentSelectedVenue]);
 
   // 5. Camera control (fit bounds) when route is active
   useEffect(() => {
@@ -443,76 +585,6 @@ export default function FullScreenMap() {
       });
     }
   }, [currentActiveSession?.status, currentActiveSession?.destination]);
-
-  // 5b. Isolated route line path updater using GPU-fast setData updates
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    const hasRoute = currentActiveSession?.status === 'EN_ROUTE' && currentActiveSession.destination;
-    if (!hasRoute || !currentActiveSession.destination) {
-      // Remove layers and source if inactive
-      if (map.getLayer('active-route-layer')) map.removeLayer('active-route-layer');
-      if (map.getLayer('active-route-layer-glow')) map.removeLayer('active-route-layer-glow');
-      if (map.getSource('active-route-source')) map.removeSource('active-route-source');
-      return;
-    }
-
-    const startPt = center;
-    const endPt = currentActiveSession.destination;
-    const midPt: [number, number] = [
-      (startPt[0] + endPt[0]) / 2 + 0.005,
-      (startPt[1] + endPt[1]) / 2 + 0.003
-    ];
-
-    const routeGeoJSON = {
-      type: 'Feature' as const,
-      properties: {},
-      geometry: {
-        type: 'LineString' as const,
-        coordinates: [[...startPt], midPt, [...endPt]]
-      }
-    };
-
-    const source = map.getSource('active-route-source') as maplibregl.GeoJSONSource | undefined;
-    if (source) {
-      source.setData(routeGeoJSON);
-    } else {
-      map.addSource('active-route-source', {
-        type: 'geojson',
-        data: routeGeoJSON
-      });
-
-      const primary500 = typeof window !== 'undefined' ? window.getComputedStyle(document.documentElement).getPropertyValue('--primary-500').trim() || '#22c55e' : '#22c55e';
-      const primary400 = typeof window !== 'undefined' ? window.getComputedStyle(document.documentElement).getPropertyValue('--primary-400').trim() || '#4ade80' : '#4ade80';
-
-      // Outer glow layer
-      map.addLayer({
-        id: 'active-route-layer-glow',
-        type: 'line',
-        source: 'active-route-source',
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: {
-          'line-color': primary400,
-          'line-width': 8,
-          'line-opacity': 0.3
-        }
-      });
-
-      // Main neon line layer
-      map.addLayer({
-        id: 'active-route-layer',
-        type: 'line',
-        source: 'active-route-source',
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: {
-          'line-color': primary500,
-          'line-width': 4,
-          'line-opacity': 0.95
-        }
-      });
-    }
-  }, [center, currentActiveSession?.destination, currentActiveSession?.status]);
 
   // 6. Synchronize user GPS location marker on map with unmount cleanup
   useEffect(() => {

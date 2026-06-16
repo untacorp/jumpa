@@ -10,6 +10,8 @@ infra/martin/data/
 *.zip
 *.csv
 *.json
+/scripts/
 /scripts/*.py
 /scripts/bin/
+/scripts/seed_db/
 /test_env/

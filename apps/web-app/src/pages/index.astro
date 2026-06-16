@@ -1,5 +1,6 @@
 ---
 import FullScreenMap from "@/features/map/react/FullScreenMap";
+import AppLayout from "@/features/core/AppLayout.svelte";
 import "../index.css";
 ---
 
@@ -16,49 +17,81 @@ import "../index.css";
       content="Wayland-grade fluid spatial matching application using high-performance WebGL maps."
     />
     <script is:inline>
+      function showErrorOverlay(title, message, color) {
+        if (!message || !message.trim()) return;
+
+        let container = document.getElementById("error-overlay-container");
+        if (!container) {
+          container = document.createElement("div");
+          container.id = "error-overlay-container";
+          container.style.position = "fixed";
+          container.style.bottom = "20px";
+          container.style.left = "20px";
+          container.style.right = "20px";
+          container.style.display = "flex";
+          container.style.flexDirection = "column";
+          container.style.gap = "10px";
+          container.style.maxHeight = "50vh";
+          container.style.overflowY = "auto";
+          container.style.zIndex = "999999";
+          container.style.pointerEvents = "none";
+          document.body.appendChild(container);
+        }
+
+        const div = document.createElement("div");
+        div.style.pointerEvents = "auto";
+        div.style.padding = "15px";
+        div.style.background = color;
+        div.style.color = "white";
+        div.style.fontFamily = "monospace";
+        div.style.whiteSpace = "pre-wrap";
+        div.style.borderRadius = "8px";
+        div.style.boxShadow = "0 10px 25px rgba(0,0,0,0.5)";
+        div.style.position = "relative";
+        div.style.fontSize = "13px";
+        div.style.lineHeight = "1.4";
+
+        const closeBtn = document.createElement("button");
+        closeBtn.innerText = "✕";
+        closeBtn.style.position = "absolute";
+        closeBtn.style.top = "8px";
+        closeBtn.style.right = "12px";
+        closeBtn.style.background = "none";
+        closeBtn.style.border = "none";
+        closeBtn.style.color = "white";
+        closeBtn.style.fontSize = "16px";
+        closeBtn.style.cursor = "pointer";
+        closeBtn.style.padding = "4px";
+        closeBtn.style.opacity = "0.7";
+        closeBtn.onmouseover = () => { closeBtn.style.opacity = "1"; };
+        closeBtn.onmouseout = () => { closeBtn.style.opacity = "0.7"; };
+        closeBtn.onclick = () => { div.remove(); };
+
+        const content = document.createElement("div");
+        content.innerText = `${title}:\n${message}`;
+        content.style.paddingRight = "20px";
+
+        div.appendChild(closeBtn);
+        div.appendChild(content);
+        container.appendChild(div);
+
+        // Auto-scroll to bottom of error container
+        container.scrollTop = container.scrollHeight;
+      }
+
       window.addEventListener("error", (event) => {
-        const div = document.createElement("div");
-        div.style.position = "fixed";
-        div.style.bottom = "10px";
-        div.style.left = "10px";
-        div.style.right = "10px";
-        div.style.padding = "15px";
-        div.style.background = "#ef4444";
-        div.style.color = "white";
-        div.style.zIndex = "99999";
-        div.style.fontFamily = "monospace";
-        div.style.whiteSpace = "pre-wrap";
-        div.style.borderRadius = "8px";
-        div.style.boxShadow = "0 10px 25px rgba(0,0,0,0.5)";
-        div.innerText =
-          "Browser Error:\n" +
-          (event.error ? event.error.stack : event.message);
-        document.body.appendChild(div);
+        const message = event.error ? event.error.stack : event.message;
+        showErrorOverlay("Browser Error", message, "#ef4444");
       });
+
       window.addEventListener("unhandledrejection", (event) => {
-        const div = document.createElement("div");
-        div.style.position = "fixed";
-        div.style.bottom = "10px";
-        div.style.left = "10px";
-        div.style.right = "10px";
-        div.style.padding = "15px";
-        div.style.background = "#f97316";
-        div.style.color = "white";
-        div.style.zIndex = "99999";
-        div.style.fontFamily = "monospace";
-        div.style.whiteSpace = "pre-wrap";
-        div.style.borderRadius = "8px";
-        div.style.boxShadow = "0 10px 25px rgba(0,0,0,0.5)";
-        div.innerText =
-          "Unhandled Rejection:\n" +
-          (event.reason ? event.reason.stack || event.reason : event);
-        document.body.appendChild(div);
+        const message = event.reason ? event.reason.stack || event.reason : event;
+        showErrorOverlay("Unhandled Rejection", String(message), "#f97316");
       });
+
       // Override console.error to print Astro hydration errors or import failures
       const originalConsoleError = console.error;
       console.error = function (...args) {
-        originalConsoleError.apply(console, args);
-
         const errorMsg = args
           .map((arg) => {
             if (arg instanceof Error) return arg.stack;
@@ -73,7 +106,7 @@ import "../index.css";
           })
           .join(" ");
 
-        // Ignore harmless Vite/HMR websocket connection errors that overlay the UI in dev
+        // Ignore harmless Vite/HMR websocket connection errors that overlay the UI in dev, redirect them to console.log
         if (
           errorMsg.includes("[vite]") ||
           errorMsg.includes("@vite/client") ||
@@ -81,24 +114,13 @@ import "../index.css";
           errorMsg.includes("AstroDevToolbar") ||
           errorMsg.includes("toolbar-")
         ) {
+          console.log(...args);
           return;
         }
 
-        const div = document.createElement("div");
-        div.style.position = "fixed";
-        div.style.bottom = "120px";
-        div.style.left = "10px";
-        div.style.right = "10px";
-        div.style.padding = "15px";
-        div.style.background = "#dc2626";
-        div.style.color = "white";
-        div.style.zIndex = "99999";
-        div.style.fontFamily = "monospace";
-        div.style.whiteSpace = "pre-wrap";
-        div.style.borderRadius = "8px";
-        div.style.boxShadow = "0 10px 25px rgba(0,0,0,0.5)";
-        div.innerText = "Console Error:\n" + errorMsg;
-        document.body.appendChild(div);
+        originalConsoleError.apply(console, args);
+
+        showErrorOverlay("Console Error", errorMsg, "#dc2626");
       };
     </script>
   </head>
@@ -111,6 +133,9 @@ import "../index.css";
       <div id="map-viewport" class="map-viewport-wrapper">
         <FullScreenMap client:only="react" />
       </div>
+
+      <!-- Main Unified Layout Overlay -->
+      <AppLayout client:only="svelte" />
     </div>
   </body>
 </html>
