@@ -125,6 +125,13 @@ def main():
             if not name:
                 continue
                 
+            # Filter out generic/useless names and very short placeholders
+            name_lower = name.strip().lower()
+            if name_lower in ('hotel', 'pura', 'sd', 'villa', 'vila', 'warung', 'resto', 'rumah', 'masjid', 'gereja', 'apotek', 'toko', 'sekolah', 'puskesmas'):
+                continue
+            if len(name.strip()) <= 2 and name_lower not in ('kfc', 'jfc', 'ack', 'xxi', 'bca', 'bri', 'bni', 'tix', 'uno'):
+                continue
+                
             name = name.replace("'", "''")
             
             lat = el.get('lat')
@@ -151,7 +158,18 @@ def main():
             city = tags.get('addr:city', region['name'])
             city = city.replace("'", "''")
             
-            sql = f"INSERT INTO foursquare_places (foursquare_id, name, latitude, longitude, geom, category, address, city, country) VALUES ('{osm_id}', '{name}', {lat}, {lon}, ST_SetSRID(ST_Point({lon}, {lat}), 4326), '{category}', '{address}', '{city}', 'ID') ON CONFLICT (foursquare_id) DO NOTHING;"
+            # Map category to category_group
+            category_group = 'community'
+            if category in ('coffee_shop', 'cafe', 'restaurant', 'indonesian_restaurant', 'asian_restaurant', 'chinese_restaurant', 'noodles_restaurant', 'fast_food_restaurant', 'chicken_restaurant', 'japanese_restaurant', 'bakery', 'food_court', 'dessert_shop', 'ice_cream_parlor', 'tea_room', 'juice_bar', 'food_truck'):
+                category_group = 'food'
+            elif category in ('hotel', 'accommodation', 'hostel', 'resort', 'airport', 'train_station', 'metro_station', 'bus_station', 'bus_stop', 'shopping_center', 'shopping_mall', 'department_store', 'landmark_and_historical_building'):
+                category_group = 'transit_shopping'
+            elif category in ('park', 'tourist_attraction', 'plaza', 'scenic_lookout'):
+                category_group = 'nature'
+            elif category in ('art_gallery', 'museum', 'theater', 'cinema', 'music_venue', 'cultural_center', 'arts_and_entertainment', 'sports_club', 'stadium', 'sports_complex', 'playground', 'gym_fitness_center', 'recreation_center'):
+                category_group = 'arts_sports'
+            
+            sql = f"INSERT INTO places (id, name, latitude, longitude, geom, category, category_group, address, city, country, confidence) VALUES ('{osm_id}', '{name}', {lat}, {lon}, ST_SetSRID(ST_Point({lon}, {lat}), 4326), '{category}', '{category_group}', '{address}', '{city}', 'ID', 1.0) ON CONFLICT (id) DO NOTHING;"
             sql_statements.append(sql)
             region_mapped_count += 1
             

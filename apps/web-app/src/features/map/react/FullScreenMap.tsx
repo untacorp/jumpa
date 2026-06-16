@@ -499,7 +499,7 @@ function applyThemeForHour(map: maplibregl.Map, hour: number) {
 
         // Customize text labels (countries, cities, districts, streets) for high dark-mode readability
         if (layer.type === 'symbol') {
-          const isBasemapLabel = layer.id !== 'foursquare-places-layer';
+          const isBasemapLabel = layer.id !== 'places-layer';
           if (isBasemapLabel) {
             try {
               map.setPaintProperty(layer.id, 'text-color', labelTextColor);
@@ -511,9 +511,9 @@ function applyThemeForHour(map: maplibregl.Map, hour: number) {
       });
     }
 
-    // Dynamic Foursquare labels halo color to match theme backdrops
-    if (map.getLayer('foursquare-places-layer')) {
-      map.setPaintProperty('foursquare-places-layer', 'text-halo-color', labelTextHaloColor);
+    // Dynamic places labels halo color to match theme backdrops
+    if (map.getLayer('places-layer')) {
+      map.setPaintProperty('places-layer', 'text-halo-color', labelTextHaloColor);
     }
   } catch (err) {
     console.error('Error applying dynamic style paint properties:', err);
@@ -611,7 +611,7 @@ export default function FullScreenMap() {
 
     const handlePoiClick = (e: any) => {
       const features = map.queryRenderedFeatures(e.point, {
-        layers: ['foursquare-places-layer']
+        layers: ['places-layer']
       });
       if (!features.length) return;
 
@@ -619,7 +619,7 @@ export default function FullScreenMap() {
       const lngLat = (feature.geometry as any).coordinates.slice();
       const { name, category, address } = feature.properties || {};
 
-      const venueId = feature.properties?.id || feature.properties?.foursquare_id || String(Math.random());
+      const venueId = feature.properties?.id || String(Math.random());
       const weight = parseFloat((4.0 + (Math.abs((name || '').split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0)) % 10) / 10).toFixed(1));
 
       const venue: Venue = {
@@ -706,8 +706,8 @@ export default function FullScreenMap() {
                             (layer['source-layer'] && layer['source-layer'].includes('poi')) ||
                             (layer.sourceLayer && layer.sourceLayer.includes('poi'));
               
-              // Do NOT remove our own custom Foursquare layers
-              const isCustomLayer = layer.id.includes('foursquare-places');
+              // Do NOT remove our own custom places layers
+              const isCustomLayer = layer.id.includes('places');
               
               if (isPoi && !isCustomLayer) {
                 map.removeLayer(layer.id);
@@ -718,16 +718,16 @@ export default function FullScreenMap() {
           console.warn('Error removing default POI layers:', err);
         }
 
-        // Add foursquare-places source if it doesn't exist
-        if (!map.getSource('foursquare-places')) {
-          map.addSource('foursquare-places', {
+        // Add places source if it doesn't exist
+        if (!map.getSource('places')) {
+          map.addSource('places', {
             type: 'vector',
-            url: `${window.location.origin}/tiles/get_foursquare_places`
+            url: `${window.location.origin}/tiles/get_places`
           });
         }
 
-        // Add foursquare layers if they don't exist
-        if (!map.getLayer('foursquare-places-layer')) {
+        // Add places layers if they don't exist
+        if (!map.getLayer('places-layer')) {
           const colors = {
             colorFood: '#f59e0b',
             colorTransit: '#3b82f6',
@@ -738,10 +738,10 @@ export default function FullScreenMap() {
           };
 
           map.addLayer({
-            id: 'foursquare-places-layer',
+            id: 'places-layer',
             type: 'symbol',
-            source: 'foursquare-places',
-            'source-layer': 'foursquare_places',
+            source: 'places',
+            'source-layer': 'places',
             layout: {
               // Icon layout properties
               'icon-image': [
@@ -852,14 +852,14 @@ export default function FullScreenMap() {
         }
 
         // Safe event registration (off first then on)
-        map.off('click', 'foursquare-places-layer', handlePoiClick);
-        map.on('click', 'foursquare-places-layer', handlePoiClick);
+        map.off('click', 'places-layer', handlePoiClick);
+        map.on('click', 'places-layer', handlePoiClick);
 
-        map.off('mouseenter', 'foursquare-places-layer', handleMouseEnter);
-        map.on('mouseenter', 'foursquare-places-layer', handleMouseEnter);
+        map.off('mouseenter', 'places-layer', handleMouseEnter);
+        map.on('mouseenter', 'places-layer', handleMouseEnter);
 
-        map.off('mouseleave', 'foursquare-places-layer', handleMouseLeave);
-        map.on('mouseleave', 'foursquare-places-layer', handleMouseLeave);
+        map.off('mouseleave', 'places-layer', handleMouseLeave);
+        map.on('mouseleave', 'places-layer', handleMouseLeave);
       });
     });
 
@@ -872,7 +872,7 @@ export default function FullScreenMap() {
 
     map.on('idle', () => {
       const features = map.queryRenderedFeatures(undefined, {
-        layers: ['foursquare-places-layer']
+        layers: ['places-layer']
       });
 
       const uniqueVenuesMap = new Map<string, Venue>();
@@ -883,7 +883,7 @@ export default function FullScreenMap() {
         const lngLat = (feature.geometry as any).coordinates;
         if (!lngLat || lngLat.length < 2) return;
 
-        const venueId = feature.properties?.id || feature.properties?.foursquare_id || name;
+        const venueId = feature.properties?.id || name;
         if (uniqueVenuesMap.has(venueId)) return;
 
         const category = feature.properties?.category || 'Venue';
