@@ -4,3 +4,12 @@ node_modules
 .env.dev
 .env.prod
 infra/martin/data/
+
+# Temporary binaries and scripts
+/duckdb
+*.zip
+*.csv
+*.json
+/scripts/*.py
+/scripts/bin/
+/test_env/

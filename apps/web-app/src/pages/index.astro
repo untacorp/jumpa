@@ -1,7 +1,5 @@
 ---
 import FullScreenMap from "@/features/map/react/FullScreenMap";
-import ControlOverlay from "@/features/core/ControlOverlay.svelte";
-import ChatDrawer from "@/features/chat/ChatDrawer.svelte";
 import "../index.css";
 ---
 
@@ -60,6 +58,32 @@ import "../index.css";
       const originalConsoleError = console.error;
       console.error = function (...args) {
         originalConsoleError.apply(console, args);
+
+        const errorMsg = args
+          .map((arg) => {
+            if (arg instanceof Error) return arg.stack;
+            if (typeof arg === "object") {
+              try {
+                return JSON.stringify(arg);
+              } catch (e) {
+                return String(arg);
+              }
+            }
+            return String(arg);
+          })
+          .join(" ");
+
+        // Ignore harmless Vite/HMR websocket connection errors that overlay the UI in dev
+        if (
+          errorMsg.includes("[vite]") ||
+          errorMsg.includes("@vite/client") ||
+          errorMsg.includes("HMRClient") ||
+          errorMsg.includes("AstroDevToolbar") ||
+          errorMsg.includes("toolbar-")
+        ) {
+          return;
+        }
+
         const div = document.createElement("div");
         div.style.position = "fixed";
         div.style.bottom = "120px";
@@ -73,21 +97,7 @@ import "../index.css";
         div.style.whiteSpace = "pre-wrap";
         div.style.borderRadius = "8px";
         div.style.boxShadow = "0 10px 25px rgba(0,0,0,0.5)";
-        div.innerText =
-          "Console Error:\n" +
-          args
-            .map((arg) => {
-              if (arg instanceof Error) return arg.stack;
-              if (typeof arg === "object") {
-                try {
-                  return JSON.stringify(arg);
-                } catch (e) {
-                  return String(arg);
-                }
-              }
-              return String(arg);
-            })
-            .join(" ");
+        div.innerText = "Console Error:\n" + errorMsg;
         document.body.appendChild(div);
       };
     </script>
@@ -101,10 +111,6 @@ import "../index.css";
       <div id="map-viewport" class="map-viewport-wrapper">
         <FullScreenMap client:only="react" />
       </div>
-
-      <!-- Svelte UI layers (temporarily disabled) -->
-      <!-- <ControlOverlay client:only="svelte" /> -->
-      <!-- <ChatDrawer client:only="svelte" /> -->
     </div>
   </body>
 </html>

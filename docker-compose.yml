@@ -110,7 +110,13 @@ services:
       - DATABASE_URL=postgres://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-jumpa}
     volumes:
       - ./infra/martin/data:/data
-    command: ["/data"]
+      - ./infra/martin/config.yaml:/config.yaml:ro
+    command: ["--config", "/config.yaml"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/catalog"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     depends_on:
       postgres:
         condition: service_healthy

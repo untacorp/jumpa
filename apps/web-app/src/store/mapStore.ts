@@ -7,6 +7,8 @@ export const mapZoom = atom<number>(12);
 export const isChatOpen = atom<boolean>(false);
 export const blackholeOrigin = atom<{ x: number; y: number }>({ x: 0, y: 0 });
 export const activeSession = atom<JumpaSession | null>(null);
+export const userLocation = atom<readonly [number, number] | null>(null);
+export const isLocating = atom<boolean>(false);
 
 // Selected venue / active marker
 export const selectedVenue = atom<Venue | null>(null);
@@ -22,7 +24,7 @@ export function setMapTheme(mode: MapThemeMode) {
 // Synchronize mapTheme state with HTML root element data-theme attribute
 if (typeof document !== 'undefined') {
   mapTheme.subscribe((theme) => {
-    let activeTheme = theme;
+    let activeTheme: string = theme;
     if (theme === 'auto') {
       const hour = new Date().getHours();
       if (hour >= 20 || hour < 5) activeTheme = 'night';
@@ -117,5 +119,57 @@ export function selectVenue(venue: Venue | null) {
   if (venue) {
     setMapCenter(venue.coordinates[0], venue.coordinates[1]);
     setMapZoom(14.5);
+  }
+}
+
+let watchId: any = null;
+
+export function locateUser() {
+  if (typeof window === 'undefined' || !navigator.geolocation) {
+    console.warn('Geolocation not supported');
+    return;
+  }
+  
+  isLocating.set(true);
+  
+  navigator.geolocation.getCurrentPosition(
+    (position) => {
+      const { longitude, latitude } = position.coords;
+      userLocation.set([longitude, latitude]);
+      setMapCenter(longitude, latitude);
+      setMapZoom(15);
+      isLocating.set(false);
+      
+      // Start tracking position continuously
+      startTrackingUserLocation();
+    },
+    (error) => {
+      console.error('Error locating user:', error);
+      isLocating.set(false);
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
+}
+
+export function startTrackingUserLocation() {
+  if (typeof window === 'undefined' || !navigator.geolocation) return;
+  if (watchId !== null) return;
+  
+  watchId = navigator.geolocation.watchPosition(
+    (position) => {
+      const { longitude, latitude } = position.coords;
+      userLocation.set([longitude, latitude]);
+    },
+    (error) => {
+      console.warn('Error watching user location:', error);
+    },
+    { enableHighAccuracy: true }
+  );
+}
+
+export function stopTrackingUserLocation() {
+  if (typeof window !== 'undefined' && watchId !== null) {
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
   }
 }
