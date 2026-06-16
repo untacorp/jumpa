@@ -108,20 +108,28 @@ const registerMapIcons = (map: maplibregl.Map, callback: () => void) => {
 };
 
 // Helper to get category glow colors
-function getCategoryColor(category: string): string {
+function getCategoryColor(category: string, category_group?: string): string {
+  const g = category_group ? category_group.toLowerCase() : '';
+  if (g === 'food') return '#f59e0b';
+  if (g === 'transit_shopping') return '#3b82f6';
+  if (g === 'nature') return '#10b981';
+  if (g === 'arts_sports') return '#06b6d4';
+  if (g === 'community') return '#a855f7';
+  
   const c = category.toLowerCase();
   if (['coffee_shop', 'cafe', 'restaurant', 'indonesian_restaurant', 'asian_restaurant', 
        'chinese_restaurant', 'noodles_restaurant', 'fast_food_restaurant', 'chicken_restaurant', 
        'japanese_restaurant', 'bakery', 'food_court', 'dessert_shop', 'ice_cream_parlor', 
-       'tea_room', 'juice_bar', 'food_truck'].includes(c)) {
+       'tea_room', 'juice_bar', 'food_truck', 'bar', 'pub', 'nightclub'].includes(c)) {
     return '#f59e0b'; // Amber for Food
   }
-  if (['hotel', 'accommodation', 'hostel', 'resort', 'airport', 'train_station', 
+  if (['hotel', 'accommodation', 'hostel', 'resort', 'motel', 'guest_house', 'airport', 'train_station', 
        'metro_station', 'bus_station', 'bus_stop', 'shopping_center', 'shopping_mall', 
-       'department_store', 'landmark_and_historical_building'].includes(c)) {
+       'department_store', 'landmark_and_historical_building', 'gas_station', 'bank', 'atm', 
+       'supermarket', 'convenience_store'].includes(c)) {
     return '#3b82f6'; // Blue for Transit/Shopping
   }
-  if (['park', 'tourist_attraction', 'plaza', 'scenic_lookout'].includes(c)) {
+  if (['park', 'tourist_attraction', 'plaza', 'scenic_lookout', 'beach'].includes(c)) {
     return '#10b981'; // Green for Nature
   }
   if (['art_gallery', 'museum', 'theater', 'cinema', 'music_venue', 'cultural_center', 
@@ -129,11 +137,7 @@ function getCategoryColor(category: string): string {
        'gym_fitness_center', 'recreation_center'].includes(c)) {
     return '#06b6d4'; // Cyan for Arts/Sports
   }
-  if (['mosque', 'church_cathedral', 'temple', 'community_center', 'library', 'school', 
-       'education', 'college_university', 'elementary_school', 'high_school'].includes(c)) {
-    return '#a855f7'; // Purple for Community/Education
-  }
-  return '#64748b'; // Slate default
+  return '#a855f7'; // Purple for Community/Education by default
 }
 
 /// Helper functions for color interpolation supporting alpha transparency
@@ -526,7 +530,7 @@ function createMarkerElement(venue: Venue, isSelected: boolean, onClick: () => v
   el.className = `custom-marker ${isSelected ? 'selected' : ''}`;
   
   // Set custom category color for neon glows
-  const glowColor = getCategoryColor(venue.category);
+  const glowColor = getCategoryColor(venue.category, venue.category_group);
   el.style.setProperty('--category-glow-color', glowColor);
 
   el.innerHTML = `
@@ -626,6 +630,7 @@ export default function FullScreenMap() {
         id: venueId,
         name: name || 'Venue',
         category: category || 'Uncategorized',
+        category_group: feature.properties?.category_group || 'community',
         coordinates: [lngLat[0], lngLat[1]],
         address: address || 'Indonesia',
         weight
@@ -751,19 +756,20 @@ export default function FullScreenMap() {
                   'coffee_shop', 'cafe', 'restaurant', 'indonesian_restaurant', 'asian_restaurant', 
                   'chinese_restaurant', 'noodles_restaurant', 'fast_food_restaurant', 'chicken_restaurant', 
                   'japanese_restaurant', 'bakery', 'food_court', 'dessert_shop', 'ice_cream_parlor', 
-                  'tea_room', 'juice_bar', 'food_truck'
+                  'tea_room', 'juice_bar', 'food_truck', 'bar', 'pub', 'nightclub'
                 ], 'icon-coffee',
                 [
-                  'hotel', 'accommodation', 'hostel', 'resort'
+                  'hotel', 'accommodation', 'hostel', 'resort', 'motel', 'guest_house'
                 ], 'icon-bed',
                 [
-                  'airport', 'train_station', 'metro_station', 'bus_station', 'bus_stop'
+                  'airport', 'train_station', 'metro_station', 'bus_station', 'bus_stop', 'gas_station'
                 ], 'icon-transit',
                 [
-                  'shopping_center', 'shopping_mall', 'department_store', 'landmark_and_historical_building'
+                  'shopping_center', 'shopping_mall', 'department_store', 'landmark_and_historical_building',
+                  'supermarket', 'convenience_store', 'bank', 'atm'
                 ], 'icon-shopping',
                 [
-                  'park', 'tourist_attraction', 'plaza', 'scenic_lookout'
+                  'park', 'tourist_attraction', 'plaza', 'scenic_lookout', 'beach'
                 ], 'icon-tree',
                 [
                   'art_gallery', 'museum', 'theater', 'cinema', 'music_venue', 'cultural_center', 'arts_and_entertainment'
@@ -773,7 +779,8 @@ export default function FullScreenMap() {
                 ], 'icon-trophy',
                 [
                   'mosque', 'church_cathedral', 'temple', 'community_center', 'library', 'school', 'education', 
-                  'college_university', 'elementary_school', 'high_school'
+                  'college_university', 'elementary_school', 'high_school', 'hospital', 'clinic', 'pharmacy',
+                  'police_station', 'post_office', 'government_office'
                 ], 'icon-community',
                 'icon-default'
               ],
@@ -820,29 +827,12 @@ export default function FullScreenMap() {
             paint: {
               'text-color': [
                 'match',
-                ['get', 'category'],
-                [
-                  'coffee_shop', 'cafe', 'restaurant', 'indonesian_restaurant', 'asian_restaurant', 
-                  'chinese_restaurant', 'noodles_restaurant', 'fast_food_restaurant', 'chicken_restaurant', 
-                  'japanese_restaurant', 'bakery', 'food_court', 'dessert_shop', 'ice_cream_parlor', 
-                  'tea_room', 'juice_bar', 'food_truck'
-                ], colors.colorFood,
-                [
-                  'hotel', 'accommodation', 'hostel', 'resort',
-                  'airport', 'train_station', 'metro_station', 'bus_station', 'bus_stop',
-                  'shopping_center', 'shopping_mall', 'department_store', 'landmark_and_historical_building'
-                ], colors.colorTransit,
-                [
-                  'park', 'tourist_attraction', 'plaza', 'scenic_lookout'
-                ], colors.colorNature,
-                [
-                  'art_gallery', 'museum', 'theater', 'cinema', 'music_venue', 'cultural_center', 'arts_and_entertainment',
-                  'sports_club', 'stadium', 'sports_complex', 'playground', 'gym_fitness_center', 'recreation_center'
-                ], colors.colorArts,
-                [
-                  'mosque', 'church_cathedral', 'temple', 'community_center', 'library', 'school', 'education', 
-                  'college_university', 'elementary_school', 'high_school'
-                ], colors.colorCommunity,
+                ['get', 'category_group'],
+                'food', colors.colorFood,
+                'transit_shopping', colors.colorTransit,
+                'nature', colors.colorNature,
+                'arts_sports', colors.colorArts,
+                'community', colors.colorCommunity,
                 colors.colorDefault
               ],
               'text-halo-color': '#ffffff',
@@ -887,6 +877,7 @@ export default function FullScreenMap() {
         if (uniqueVenuesMap.has(venueId)) return;
 
         const category = feature.properties?.category || 'Venue';
+        const category_group = feature.properties?.category_group || 'community';
         const address = feature.properties?.address || 'Indonesia';
         const weight = parseFloat((4.0 + (Math.abs(name.split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0)) % 10) / 10).toFixed(1));
 
@@ -894,6 +885,7 @@ export default function FullScreenMap() {
           id: venueId,
           name,
           category,
+          category_group,
           coordinates: [lngLat[0], lngLat[1]],
           address,
           weight

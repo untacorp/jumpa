@@ -2,6 +2,7 @@ export interface Venue {
   id: string;
   name: string;
   category: string;
+  category_group?: string;
   coordinates: readonly [number, number]; // [lng, lat]
   address: string;
   weight: number;

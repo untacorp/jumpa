@@ -15,3 +15,8 @@ infra/martin/data/
 /scripts/bin/
 /scripts/seed_db/
 /test_env/
+
+# Scratch data files
+scratch/*.geojson
+scratch/*.geojson.state
+scratch/*.sql

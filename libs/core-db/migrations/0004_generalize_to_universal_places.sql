@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS public.places (
     address TEXT,
     city VARCHAR(100),
     region VARCHAR(100),
-    postcode VARCHAR(20),
+    postcode VARCHAR(100),
     country VARCHAR(10) DEFAULT 'ID',
     website VARCHAR(512),
     phone VARCHAR(64),
