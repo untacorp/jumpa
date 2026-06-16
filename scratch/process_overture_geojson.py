@@ -3,34 +3,86 @@ import sys
 import os
 
 def map_category_group(category):
-    c = category.lower() if category else ''
-    
+    c = category.lower().strip() if category else ''
+    if not c or c == 'none':
+        return None
+        
     # Food & Drink
-    if c in ('coffee_shop', 'cafe', 'restaurant', 'indonesian_restaurant', 'asian_restaurant', 
-             'chinese_restaurant', 'noodles_restaurant', 'fast_food_restaurant', 'chicken_restaurant', 
-             'japanese_restaurant', 'bakery', 'food_court', 'dessert_shop', 'ice_cream_parlor', 
-             'tea_room', 'juice_bar', 'food_truck', 'bar', 'pub', 'nightclub'):
+    food_cats = {
+        'restaurant', 'coffee_shop', 'cafe', 'indonesian_restaurant', 'fast_food_restaurant', 
+        'chicken_restaurant', 'asian_restaurant', 'seafood_restaurant', 'diner', 
+        'japanese_restaurant', 'bar', 'chinese_restaurant', 'noodles_restaurant', 
+        'pizza_restaurant', 'bakery', 'steakhouse', 'food_stand', 'food_court', 
+        'ice_cream_parlor', 'tea_room', 'juice_bar', 'food_truck', 'pub', 'nightclub', 
+        'karaoke', 'eat_and_drink'
+    }
+    if c in food_cats:
         return 'food'
         
     # Lodging, Transit, Financial & Shopping
-    if c in ('hotel', 'accommodation', 'hostel', 'resort', 'motel', 'guest_house',
-             'airport', 'train_station', 'metro_station', 'bus_station', 'bus_stop', 'gas_station',
-             'shopping_center', 'shopping_mall', 'department_store', 'landmark_and_historical_building',
-             'supermarket', 'convenience_store', 'bank', 'atm'):
+    transit_shopping_cats = {
+        # Lodging
+        'hotel', 'accommodation', 'resort', 'hostel', 'motel', 'guest_house', 'lodge', 
+        'cottage', 'holiday_rental_home',
+        # Transit
+        'airport', 'train_station', 'metro_station', 'bus_station', 'bus_stop', 'gas_station', 
+        'transportation',
+        # Shopping malls & landmarks
+        'shopping_center', 'shopping_mall', 'department_store', 'landmark_and_historical_building',
+        # Supermarkets & pharmacies
+        'supermarket', 'convenience_store', 'grocery_store', 'pharmacy',
+        # Financial
+        'bank_credit_union', 'banks', 'atm', 'financial_service',
+        # Other Retail / Shopping
+        'clothing_store', 'mobile_phone_store', 'electronics', 'furniture_store', 'bookstore', 
+        'shoe_store', 'jewelry_store', 'pet_store', 'hardware_store', 'building_supply_store', 
+        'computer_store', 'cosmetic_and_beauty_supplies', 'flowers_and_gifts_shop', 'retail', 
+        'shopping', 'beauty_salon', 'barber', 'spas', 'beauty_and_spa', 'hair_salon', 'skin_care'
+    }
+    if c in transit_shopping_cats:
         return 'transit_shopping'
         
     # Nature & Outdoors
-    if c in ('park', 'tourist_attraction', 'plaza', 'scenic_lookout', 'beach'):
+    nature_cats = {
+        'park', 'tourist_attraction', 'plaza', 'scenic_lookout', 'beach', 
+        'attractions_and_activities', 'active_life'
+    }
+    if c in nature_cats:
         return 'nature'
         
-    # Entertainment & Arts
-    if c in ('art_gallery', 'museum', 'theater', 'cinema', 'music_venue', 'cultural_center', 
-             'arts_and_entertainment', 'sports_club', 'stadium', 'sports_complex', 'playground', 
-             'gym_fitness_center', 'recreation_center'):
+    # Entertainment & Arts & Sports
+    arts_sports_cats = {
+        'art_gallery', 'museum', 'theater', 'cinema', 'music_venue', 'cultural_center', 
+        'arts_and_entertainment', 'topic_concert_venue', 'sports_club', 'stadium', 
+        'sports_complex', 'playground', 'gym', 'gym_fitness_center', 'recreation_center', 
+        'swimming_pool', 'sports_and_recreation_venue', 'sports_club_and_league', 
+        'stadium_arena'
+    }
+    if c in arts_sports_cats:
         return 'arts_sports'
         
-    # Default is community (places of worship, schools, medical, government)
-    return 'community'
+    # Community & Public Services
+    community_cats = {
+        # Places of worship
+        'mosque', 'church_cathedral', 'church', 'temple', 'hindu_temple', 'buddhist_temple', 
+        'catholic_church', 'place_of_worship', 'religious_organization',
+        # Education
+        'school', 'college_university', 'elementary_school', 'high_school', 'middle_school', 
+        'preschool', 'university', 'college', 'library', 'religious_school', 'language_school', 
+        'vocational_and_technical_school', 'public_school', 'private_school', 'education', 
+        'campus_building',
+        # Medical
+        'hospital', 'clinic', 'medical_center', 'doctor', 'dentist', 'health_and_medical',
+        # Government
+        'police_department', 'police_station', 'post_office', 'government_office', 
+        'central_government_office', 'public_service_and_government', 'town_hall', 
+        'city_hall', 'courthouse', 'public_and_government_association', 'community_services_non_profits', 
+        'social_service_organizations', 'social_service_organization'
+    }
+    if c in community_cats:
+        return 'community'
+        
+    return None
 
 def main():
     input_file = "scratch/overture_places.geojson"
@@ -99,7 +151,9 @@ def main():
             categories = properties.get('categories', {})
             category = categories.get('primary') if (categories and categories.get('primary')) else 'uncategorized'
             category_group = map_category_group(category)
-            
+            if not category_group:
+                continue
+                
             category = category[:128]
             category_group = category_group[:64]
             
