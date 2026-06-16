@@ -15,7 +15,7 @@
   const user = {
     name: 'Kadek Agus Arya Pranata',
     username: '@aryapranata',
-    bio: 'Spatial Explorer. Looking for the perfect cup of coffee in Jakarta. ☕📍',
+    bio: 'Spatial Explorer. Looking for the perfect cup of coffee in Indonesia. ☕📍',
     avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=120&h=120&fit=crop',
     friends: 120,
     jumpas: 45,

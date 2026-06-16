@@ -429,7 +429,7 @@ export default function FullScreenMap() {
           name: name || 'Venue',
           category: category || 'Uncategorized',
           coordinates: [lngLat[0], lngLat[1]],
-          address: address || 'Jakarta, Indonesia',
+          address: address || 'Indonesia',
           weight
         };
 
@@ -469,7 +469,7 @@ export default function FullScreenMap() {
         if (uniqueVenuesMap.has(venueId)) return;
 
         const category = feature.properties?.category || 'Venue';
-        const address = feature.properties?.address || 'Jakarta, Indonesia';
+        const address = feature.properties?.address || 'Indonesia';
         const weight = parseFloat((4.0 + (Math.abs(name.split('').reduce((acc: number, char: string) => acc + char.charCodeAt(0), 0)) % 10) / 10).toFixed(1));
 
         uniqueVenuesMap.set(venueId, {

@@ -44,7 +44,7 @@ if (typeof document !== 'undefined') {
   });
 }
 
-// Sample venues around Jakarta
+// Sample venues around Indonesia
 export const venues = atom<readonly Venue[]>([]);
 
 // Helper functions to mutate state
